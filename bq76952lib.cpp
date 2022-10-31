@@ -87,6 +87,17 @@ void bq76952::initBQ(void) {
   Wire.begin();
 }
 
+// return true is data available, false if timeout
+bool waitWithTimeout(uint32_t dt_ms) {
+  auto start = millis();
+  while(!Wire.available()) {
+    if(millis() - start > dt_ms )
+      return false;
+  }
+  return true;
+}
+
+
 // Send Direct command
 unsigned int bq76952::directCommand(byte command) {
   Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
@@ -94,7 +105,11 @@ unsigned int bq76952::directCommand(byte command) {
   Wire.endTransmission();
 
   Wire.requestFrom(BQ_I2C_ADDR_READ, 2);
-  while(!Wire.available());
+  //while(!Wire.available());
+  if(!waitWithTimeout(20)) {
+    debugPrintln(F("[+] Direct Cmd TIMEOUT"));
+    return 0;
+  }
   byte lsb = Wire.read();
   byte msb = Wire.read();
 
