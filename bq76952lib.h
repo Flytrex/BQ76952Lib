@@ -98,11 +98,16 @@ public:
 	void setDischargingOvercurrentProtection(byte, byte);
 	void setDischargingShortcircuitProtection(bq76952_scd_thresh, unsigned int);
 	void setDischargingTemperatureMaxLimit(signed int, byte);
+
+	bool subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len );
+
 	void debugPrint(const char*);
 	void debugPrintln(const char*);
 	void debugPrint(const __FlashStringHelper*);
 	void debugPrintln(const __FlashStringHelper*);
 	void debugPrintlnCmd(unsigned int cmd);
+	void debugPrintf(const char *format,...) __attribute__ ((format (printf, 2, 3))) ;
+
 private:
 	void initBQ(void);
 	unsigned int directCommand(byte);
@@ -110,7 +115,9 @@ private:
 	unsigned int subCommandResponseInt(void);
 	void enterConfigUpdate(void);
 	void exitConfigUpdate(void);
-	byte computeChecksum(byte, byte);
+	byte computeChecksum(byte, byte, bool reset=false);
 	void writeDataMemory(unsigned int , unsigned int, byte);
 	byte readDataMemory(unsigned int);
+
+	Stream* debugStrm;
 };

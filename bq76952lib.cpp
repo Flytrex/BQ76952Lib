@@ -18,8 +18,8 @@
 
 // Library config
 #define DBG_BAUD            115200
-#define BQ_I2C_ADDR_WRITE   0x08
-#define BQ_I2C_ADDR_READ    0x08
+#define BQ_I2C_ADDR   0x08
+
 bool BQ_DEBUG = false;
 
 // BQ76952 - Address Map
@@ -89,25 +89,31 @@ void bq76952::initBQ(void) {
 }
 
 // return true is data available, false if timeout
-bool waitWithTimeout(uint32_t dt_ms) {
+bool waitWithTimeout(uint32_t dt_ms, uint8_t bytes = 1) {
   auto start = millis();
-  while(!Wire.available()) {
+  while(Wire.available() < bytes) {
     if(millis() - start > dt_ms )
       return false;
+    delayMicroseconds(300);
   }
   return true;
 }
 
 
+/*
+The direct commands are accessed using a 7-bit command address that is sent from
+a host through the device serial communications interface and either triggers an
+action, or provides a data value to be written to the device, or instructs the
+device to report data back to the host.
+*/
 // Send Direct command
 unsigned int bq76952::directCommand(byte command) {
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(command);
   Wire.endTransmission();
 
-  Wire.requestFrom(BQ_I2C_ADDR_READ, 2);
-  //while(!Wire.available());
-  if(!waitWithTimeout(20)) {
+  Wire.requestFrom(BQ_I2C_ADDR, 2);
+  if(!waitWithTimeout(2, 2)) {
     debugPrintln(F("[+] Direct Cmd TIMEOUT"));
     return 0;
   }
@@ -122,12 +128,43 @@ unsigned int bq76952::directCommand(byte command) {
   return (unsigned int)(msb << 8 | lsb);
 }
 
+/*
+https://www.ti.com/document-viewer/lit/html/SLUUBY2B/GUID-725A7D59-C6EA-4DE7-8CD2-9B117C75A18D#TITLE-SLUUBY2T6140828-4B
+
+Subcommands are additional commands that are accessed indirectly using the 7-bit
+command address space and provide the capability for block data transfers. When
+a subcommand is initiated, a 16-bit subcommand address is first written to the
+7-bit command addresses 0x3E (lower byte) and 0x3F (upper byte). The device
+initially assumes a read-back of data may be needed, and auto-populates existing
+data into the 32-byte transfer buffer (which uses 7-bit command addresses
+0x40–0x5F), and writes the checksum for this data into address 0x60. If the host
+instead intends to write data into the device, the host will overwrite the new
+data into the transfer buffer, a checksum for the data into address 0x60, and
+the data length into address 0x61. As soon as address 0x61 is written, the
+device checks the checksum written into 0x60 with the data written into
+0x40-0x5F, and if this is correct, it proceeds to transfer the data from the
+transfer buffer into the device's memory.
+
+The checksum is the 8-bit sum of the subcommand bytes (0x3E and 0x3F) plus the
+number of bytes used in the transfer buffer, then the result is bitwise
+inverted. The verification cannot take place until the data length is written,
+so the device realizes how many bytes in the transfer buffer are included. The
+checksum and data length must be written together as a word in order to be
+valid. The data length includes the two bytes in 0x3E and 0x3F, the two bytes in
+0x60 and 0x61, and the length of the transfer buffer. Therefore, if the entire
+32-byte transfer buffer is used, the data length will be 0x24.
+
+
+Some subcommands are only used to initiate an action and do not involve sending
+or receiving data. In these cases, the host can simply write the subcommand into
+0x3E and 0x3F, it is not necessary to write the length and checksum or any
+further data.
+*/
 // Send Sub-command
 void bq76952::subCommand(unsigned int data) {
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write((byte)data & 0x00FF);
-  Wire.write((byte)(data >> 8) & 0x00FF);
+  Wire.write((byte*)&data, 2);
   Wire.endTransmission();
 
   debugPrint(F("[+] Sub Cmd SENT to 0x3E -> "));
@@ -136,11 +173,11 @@ void bq76952::subCommand(unsigned int data) {
 
 // Read subcommand response
 unsigned int bq76952::subCommandResponseInt(void) {
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_RESP_START);
   Wire.endTransmission();
 
-  Wire.requestFrom(BQ_I2C_ADDR_READ, 2);
+  Wire.requestFrom(BQ_I2C_ADDR, 2);
   while(!Wire.available());
   byte lsb = Wire.read();
   byte msb = Wire.read();
@@ -149,6 +186,121 @@ unsigned int bq76952::subCommandResponseInt(void) {
   debugPrintlnCmd((uint16_t)(msb << 8 | lsb));
 
   return (unsigned int)(msb << 8 | lsb);
+}
+
+/*
+
+  1. Write lower byte of subcommand to 0x3E.
+  2. Write upper byte of subcommand to 0x3F.
+  3. Read 0x3E and 0x3F. If this returns 0xFF, this indicates the subcommand has
+    not completed operation yet. When the subcommand has completed, the readback
+    will return what was originally written. Continue reading 0x3E and 0x3F until
+    it returns what was written originally. Note: this response only applies to
+    subcommands that return data to be read back. 
+  4. Read the length of response from 0x61. 
+  5. Read buffer starting at 0x40 for the expected length. 
+  6. Read the checksum at 0x60 and verify it matches the data read.
+
+  Note: 0x61 provides the length of the buffer data plus 4 (that is, length of the buffer data plus the length of 0x3E and 0x3F plus the length of 0x60 and 0x61).
+
+  The checksum is calculated over (the content of) 0x3E, 0x3F, and the buffer data, it does not include the checksum or length in 0x60 and 0x61.
+*/
+// FTX: tested
+bool reqestResponse(uint8_t reg, uint8_t size, uint8_t* buff) {
+
+  Wire.beginTransmission(BQ_I2C_ADDR);
+  Wire.write(reg);
+  Wire.endTransmission();
+
+  Wire.requestFrom((uint8_t)BQ_I2C_ADDR, size);
+  if(!waitWithTimeout(2, size)) {
+    return false;
+  }
+
+  for(int i=0; i<size; ++i) {
+    buff[i] = Wire.read();
+  }
+
+  return true;
+}
+
+// FTX: tested
+bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len ) {
+
+  // 1+2. Write subCommand code to 0x3e
+  Wire.beginTransmission(BQ_I2C_ADDR);
+  Wire.write(CMD_DIR_SUBCMD_LOW);
+  Wire.write((byte*)&subCommand, 2);
+  Wire.endTransmission();
+
+  // 3. Readback subcommand code to veryfy completetion
+  byte retrys = 10;
+  do {
+    uint16_t subCommandReadback;
+    if(! reqestResponse(CMD_DIR_SUBCMD_LOW, sizeof(subCommandReadback), (byte*)&subCommandReadback) ) {
+      debugPrint(F("[+] Sub Cmd TIMEOUT"));
+      return false;
+    }
+    retrys--;
+
+    if( retrys == 0) {
+        if(BQ_DEBUG)
+          Serial.printf("[+] Timeout waitng for subcommand\n");
+        return false;
+    } else if(subCommandReadback == 0xffff || subCommandReadback == 0x1111) {
+      if(BQ_DEBUG)
+        Serial.printf("[+] not ready -> expect %x recv %x %d\n", subCommand, subCommandReadback, retrys);
+      delayMicroseconds(300);
+      continue;
+    } else if(subCommandReadback != subCommand) {
+        if(BQ_DEBUG)
+          Serial.printf("[+] Bad Readback -> expect %x recv %x\n", subCommand, subCommandReadback);
+        return false;
+    } else 
+      break;
+  } while(true);
+
+  //4. Read the length of response from 0x61. 
+  byte replyLen = 0;
+  if(! reqestResponse(CMD_DIR_RESP_LEN, 1, &replyLen) ) {
+    debugPrint(F("[+] Sub Cmd TIMEOUT"));
+    return false;
+  }
+  replyLen -= 4;
+  //debugPrint(F("[+] Reply Len -> "));
+  //debugPrintlnCmd(replyLen);
+
+  //5. Read buffer starting at 0x40 for the expected length. 
+  if (replyLen > *buffer_len)
+    return false;
+
+  if(! reqestResponse(CMD_DIR_RESP_START, replyLen, buffer) ) {
+    debugPrint(F("[+] Sub Reply TIMEOUT"));
+    return false;
+  }
+
+  *buffer_len = replyLen;
+
+  //6. Read the checksum at 0x60 and verify it matches the data read.
+  byte checksumFromDevice = 0;
+  if(! reqestResponse(CMD_DIR_RESP_CHKSUM, 1, &checksumFromDevice) ) {
+    debugPrint(F("[+] Sub CRC TIMEOUT"));
+    return false;
+  }
+
+  byte chksum = 0;
+  chksum = computeChecksum(chksum, LOW_BYTE(subCommand), true);
+  chksum = computeChecksum(chksum, HIGH_BYTE(subCommand));
+  for(int i=0; i<replyLen; ++i)
+    chksum = computeChecksum(chksum, buffer[i]);
+
+  if(chksum != checksumFromDevice) {
+    if(BQ_DEBUG)
+      Serial.printf("[+] Checksum err: calc %x recv %x\n", chksum, checksumFromDevice);
+    return false;
+  }
+
+  return true;
 }
 
 // Enter config update mode
@@ -163,17 +315,26 @@ void bq76952::exitConfigUpdate(void) {
   delayMicroseconds(1000);
 }
 
+/*
+  https://www.ti.com/document-viewer/lit/html/SLUUBY2B/GUID-9ED2EB91-EA65-49C7-9667-53B029541C4D#TITLE-SLUUBY2T5345357-60
+
+  1. Place the device into CONFIG_UPDATE mode by sending the 0x0090 ENTER_CFG_UPDATE() subcommand. 
+      The device will then automatically disable the protection FETs if they are enabled.
+	2. Wait for the 0x12 Battery Status()[CFGUPDATE] flag to set.
+	3. Modify settings as needed by writing updated data memory settings (for more information, see Data Memory Access).
+	4. Send the 0x0092 EXIT_CFG_UPDATE() command to resume firmware operation
+*/
 // Write Byte to Data memory of BQ76952
 void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfBytes) {
   byte chksum = 0;
-  chksum = computeChecksum(chksum, BQ_I2C_ADDR_WRITE);
+  chksum = computeChecksum(chksum, BQ_I2C_ADDR);
   chksum = computeChecksum(chksum, CMD_DIR_SUBCMD_LOW);
   chksum = computeChecksum(chksum, LOW_BYTE(addr));
   chksum = computeChecksum(chksum, HIGH_BYTE(addr));
   chksum = computeChecksum(chksum, data);
 
   enterConfigUpdate();
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
   Wire.write(LOW_BYTE(addr));
   Wire.write(HIGH_BYTE(addr));
@@ -182,34 +343,34 @@ void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfByt
     Wire.write(HIGH_BYTE(data));
   Wire.endTransmission();
 
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_RESP_CHKSUM);
   Wire.write(chksum);
-  Wire.write(0x05);
+  Wire.write(0x05);   // size ? what about the case where noOfBytes = 2 ?
   Wire.endTransmission();
   exitConfigUpdate();
 }
 
 // Read Byte from Data memory of BQ76952
 byte bq76952::readDataMemory(unsigned int addr) {
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
   Wire.write(LOW_BYTE(addr));
   Wire.write(HIGH_BYTE(addr));
   Wire.endTransmission();
 
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_RESP_START);
   Wire.endTransmission();
 
-  Wire.requestFrom(BQ_I2C_ADDR_READ, 1);
+  Wire.requestFrom(BQ_I2C_ADDR, 1);
   while(!Wire.available());
   return (byte)Wire.read();
 }
 
-// Compute checksome = ~(sum of all bytes)
-byte bq76952::computeChecksum(byte oldChecksum, byte data) {
-  if(!oldChecksum)
+// Compute checksum = ~(sum of all bytes)
+byte bq76952::computeChecksum(byte oldChecksum, byte data, bool reset) {
+  if(reset)
     oldChecksum = data;
   else
     oldChecksum = ~(oldChecksum) + data;
@@ -225,6 +386,8 @@ bq76952::bq76952(byte alertPin) {
 	// Constructor
   pinMode(alertPin, INPUT);
   // TODO - Attach IRQ here
+
+  debugStrm = &Serial;
 }
 
 void bq76952::begin(void) {
@@ -235,8 +398,9 @@ void bq76952::begin(void) {
   }
 }
 
+// FTX: tested
 bool bq76952::isConnected(void) {
-  Wire.beginTransmission(BQ_I2C_ADDR_WRITE);
+  Wire.beginTransmission(BQ_I2C_ADDR);
   if(Wire.endTransmission() == 0) {
     debugPrintln(F("[+] BQ76592 -> Connected on I2C"));
     return true;
@@ -253,6 +417,7 @@ void bq76952::reset(void) {
   debugPrintln(F("[+] Resetting BQ76952..."));
 }
 
+// FTX: tested
 // Read single cell voltage
 unsigned int bq76952::getCellVoltage(byte cellNumber) {
   return directCommand(CELL_NO_TO_ADDR(cellNumber));
@@ -269,6 +434,7 @@ unsigned int bq76952::getCurrent(void) {
   return directCommand(CMD_DIR_CC2_CUR);
 }
 
+// FTX: tested
 // Measure chip temperature in °C
 float bq76952::getInternalTemp(void) {
   float raw = directCommand(CMD_DIR_INT_TEMP)/10.0;
@@ -510,6 +676,23 @@ void bq76952::setDischargingTemperatureMaxLimit(signed int temp, byte sec) {
 
 ///// UTILITY FUNCTIONS /////
 
+
+
+void bq76952::debugPrintf(const char *format,...) {
+  if(!debugStrm)
+    return;
+
+  static char buffer[1000];    
+  va_list arguments_list;
+  va_start(arguments_list, format);
+  //size_t size_string = vsnprintf(NULL,0,format,arguments_list);  // useful for dynamic buffering
+  auto size_string = vsnprintf(buffer, sizeof(buffer), format, arguments_list);
+  va_end(arguments_list);
+
+  debugStrm->write(buffer, size_string);
+}
+
+// FTX: tested
 void bq76952::setDebug(bool d) {
   BQ_DEBUG = d;
 }
