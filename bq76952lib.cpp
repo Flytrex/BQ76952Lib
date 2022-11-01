@@ -8,17 +8,18 @@
 
 #include "bq76952lib.h"
 #include <Wire.h>
-
+/*
 #if (defined(AVR))
 	#include <avr\pgmspace.h>
 #else
 	#include <pgmspace.h>
 #endif
+*/
 
 // Library config
 #define DBG_BAUD            115200
-#define BQ_I2C_ADDR_WRITE   0x10
-#define BQ_I2C_ADDR_READ    0x11
+#define BQ_I2C_ADDR_WRITE   0x08
+#define BQ_I2C_ADDR_READ    0x08
 bool BQ_DEBUG = false;
 
 // BQ76952 - Address Map
