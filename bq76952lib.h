@@ -90,7 +90,7 @@ public:
 	void setFET(bq76952_fet, bq76952_fet_state);
 	bool isDischarging(void);
 	bool isCharging(void);
-	void setDebug(bool);
+
 	void setCellOvervoltageProtection(unsigned int, unsigned int);
 	void setCellUndervoltageProtection(unsigned int, unsigned int);
 	void setChargingOvercurrentProtection(byte, byte);
@@ -103,12 +103,11 @@ public:
 
 	void debugPrint(const char*);
 	void debugPrintln(const char*);
-	void debugPrint(const __FlashStringHelper*);
-	void debugPrintln(const __FlashStringHelper*);
 	void debugPrintlnCmd(unsigned int cmd);
-	void debugPrintf(const char *format,...) __attribute__ ((format (printf, 2, 3))) ;
 
-private:
+	void debugPrintf(const char *format,...) __attribute__ ((format (printf, 2, 3))) ;
+	void setDebugStrm(Stream* s)	{ debugStrm = s; }
+
 	void initBQ(void);
 	unsigned int directCommand(byte);
 	void subCommand(unsigned int);
@@ -119,5 +118,6 @@ private:
 	void writeDataMemory(unsigned int , unsigned int, byte);
 	byte readDataMemory(unsigned int);
 
+private:
 	Stream* debugStrm;
 };

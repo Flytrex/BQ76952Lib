@@ -20,8 +20,6 @@
 #define DBG_BAUD            115200
 #define BQ_I2C_ADDR   0x08
 
-bool BQ_DEBUG = false;
-
 // BQ76952 - Address Map
 #define CMD_DIR_SUBCMD_LOW            0x3E
 #define CMD_DIR_SUBCMD_HI             0x3F
@@ -114,18 +112,21 @@ unsigned int bq76952::directCommand(byte command) {
 
   Wire.requestFrom(BQ_I2C_ADDR, 2);
   if(!waitWithTimeout(2, 2)) {
-    debugPrintln(F("[+] Direct Cmd TIMEOUT"));
+    debugPrintln("[+] Direct Cmd TIMEOUT");
     return 0;
   }
   byte lsb = Wire.read();
   byte msb = Wire.read();
 
-  debugPrint(F("[+] Direct Cmd SENT -> "));
-  debugPrintlnCmd((uint16_t)command);
-  debugPrint(F("[+] Direct Cmd RESP <- "));
-  debugPrintlnCmd((uint16_t)(msb << 8 | lsb));
+  uint16_t resp = (msb << 8 | lsb);
+  debugPrintf("[+] Direct Cmd SENT -> 0x%02X\n", command);
+  debugPrintf("[+] Direct Cmd RESP <- 0x%04X\n", resp);
+  //debugPrint("[+] Direct Cmd SENT -> ");
+  //debugPrintlnCmd((uint16_t)command);
+  //debugPrint("[+] Direct Cmd RESP <- ");
+  //debugPrintlnCmd((uint16_t)(msb << 8 | lsb));
 
-  return (unsigned int)(msb << 8 | lsb);
+  return resp; // (unsigned int)(msb << 8 | lsb);
 }
 
 /*
@@ -167,7 +168,7 @@ void bq76952::subCommand(unsigned int data) {
   Wire.write((byte*)&data, 2);
   Wire.endTransmission();
 
-  debugPrint(F("[+] Sub Cmd SENT to 0x3E -> "));
+  debugPrint("[+] Sub Cmd SENT to 0x3E -> ");
   debugPrintlnCmd((uint16_t)data);
 }
 
@@ -182,7 +183,7 @@ unsigned int bq76952::subCommandResponseInt(void) {
   byte lsb = Wire.read();
   byte msb = Wire.read();
 
-  debugPrint(F("[+] Sub Cmd uint16_t RESP at 0x40 -> "));
+  debugPrint("[+] Sub Cmd uint16_t RESP at 0x40 -> ");
   debugPrintlnCmd((uint16_t)(msb << 8 | lsb));
 
   return (unsigned int)(msb << 8 | lsb);
@@ -238,23 +239,20 @@ bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8
   do {
     uint16_t subCommandReadback;
     if(! reqestResponse(CMD_DIR_SUBCMD_LOW, sizeof(subCommandReadback), (byte*)&subCommandReadback) ) {
-      debugPrint(F("[+] Sub Cmd TIMEOUT"));
+      debugPrint("[+] Sub Cmd TIMEOUT");
       return false;
     }
     retrys--;
 
     if( retrys == 0) {
-        if(BQ_DEBUG)
-          Serial.printf("[+] Timeout waitng for subcommand\n");
+        debugPrintf("[+] Timeout waitng for subcommand\n");
         return false;
     } else if(subCommandReadback == 0xffff || subCommandReadback == 0x1111) {
-      if(BQ_DEBUG)
-        Serial.printf("[+] not ready -> expect %x recv %x %d\n", subCommand, subCommandReadback, retrys);
+      debugPrintf("[+] not ready -> expect %x recv %x %d\n", subCommand, subCommandReadback, retrys);
       delayMicroseconds(300);
       continue;
     } else if(subCommandReadback != subCommand) {
-        if(BQ_DEBUG)
-          Serial.printf("[+] Bad Readback -> expect %x recv %x\n", subCommand, subCommandReadback);
+        debugPrintf("[+] Bad Readback -> expect %x recv %x\n", subCommand, subCommandReadback);
         return false;
     } else 
       break;
@@ -263,11 +261,11 @@ bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8
   //4. Read the length of response from 0x61. 
   byte replyLen = 0;
   if(! reqestResponse(CMD_DIR_RESP_LEN, 1, &replyLen) ) {
-    debugPrint(F("[+] Sub Cmd TIMEOUT"));
+    debugPrint("[+] Sub Cmd TIMEOUT");
     return false;
   }
   replyLen -= 4;
-  //debugPrint(F("[+] Reply Len -> "));
+  //debugPrint("[+] Reply Len -> ");
   //debugPrintlnCmd(replyLen);
 
   //5. Read buffer starting at 0x40 for the expected length. 
@@ -275,7 +273,7 @@ bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8
     return false;
 
   if(! reqestResponse(CMD_DIR_RESP_START, replyLen, buffer) ) {
-    debugPrint(F("[+] Sub Reply TIMEOUT"));
+    debugPrint("[+] Sub Reply TIMEOUT");
     return false;
   }
 
@@ -284,7 +282,7 @@ bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8
   //6. Read the checksum at 0x60 and verify it matches the data read.
   byte checksumFromDevice = 0;
   if(! reqestResponse(CMD_DIR_RESP_CHKSUM, 1, &checksumFromDevice) ) {
-    debugPrint(F("[+] Sub CRC TIMEOUT"));
+    debugPrint("[+] Sub CRC TIMEOUT");
     return false;
   }
 
@@ -295,8 +293,8 @@ bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8
     chksum = computeChecksum(chksum, buffer[i]);
 
   if(chksum != checksumFromDevice) {
-    if(BQ_DEBUG)
-      Serial.printf("[+] Checksum err: calc %x recv %x\n", chksum, checksumFromDevice);
+    if(debugStrm)
+      debugStrm->printf("[+] Checksum err: calc %x recv %x\n", chksum, checksumFromDevice);
     return false;
   }
 
@@ -386,27 +384,21 @@ bq76952::bq76952(byte alertPin) {
 	// Constructor
   pinMode(alertPin, INPUT);
   // TODO - Attach IRQ here
-
-  debugStrm = &Serial;
 }
 
 void bq76952::begin(void) {
   initBQ();
-  if(BQ_DEBUG) {
-    Serial.begin(DBG_BAUD);
-    debugPrintln(F("[+] Initializing BQ76952..."));
-  }
 }
 
 // FTX: tested
 bool bq76952::isConnected(void) {
   Wire.beginTransmission(BQ_I2C_ADDR);
   if(Wire.endTransmission() == 0) {
-    debugPrintln(F("[+] BQ76592 -> Connected on I2C"));
+    debugPrintln("[+] BQ76592 -> Connected on I2C");
     return true;
   }
   else {
-    debugPrintln(F("[+] BQ76592 -> Not Detected on I2C"));
+    debugPrintln("[+] BQ76592 -> Not Detected on I2C");
     return false;
   }
 }
@@ -414,7 +406,7 @@ bool bq76952::isConnected(void) {
 // Reset the BQ chip
 void bq76952::reset(void) {
   subCommand(0x0012);
-  debugPrintln(F("[+] Resetting BQ76952..."));
+  debugPrintln("[+] Resetting BQ76952...");
 }
 
 // FTX: tested
@@ -522,10 +514,10 @@ void bq76952::setFET(bq76952_fet fet, bq76952_fet_state state) {
 bool bq76952::isCharging(void) {
   byte regData = (byte)directCommand(CMD_DIR_FET_STAT);
   if(regData & 0x01) {
-    debugPrintln(F("[+] Charging FET -> ON"));
+    debugPrintln("[+] Charging FET -> ON");
     return true;
   }
-  debugPrintln(F("[+] Charging FET -> OFF"));
+  debugPrintln("[+] Charging FET -> OFF");
   return false;
 }
 
@@ -533,10 +525,10 @@ bool bq76952::isCharging(void) {
 bool bq76952::isDischarging(void) {
   byte regData = (byte)directCommand(CMD_DIR_FET_STAT);
   if(regData & 0x04) {
-    debugPrintln(F("[+] Discharging FET -> ON"));
+    debugPrintln("[+] Discharging FET -> ON");
     return true;
   }
-  debugPrintln(F("[+] Discharging FET -> OFF"));
+  debugPrintln("[+] Discharging FET -> OFF");
   return false;
 }
 
@@ -547,14 +539,14 @@ void bq76952::setCellOvervoltageProtection(unsigned int mv, unsigned int ms) {
   if(thresh < 20 || thresh > 110)
     thresh = 86;
   else {
-    debugPrint(F("[+] COV Threshold => "));
+    debugPrint("[+] COV Threshold => ");
     debugPrintlnCmd(thresh);
     writeDataMemory(0x9278, thresh, 1);
   }
   if(dly < 1 || dly > 2047)
     dly = 74;
   else {
-    debugPrint(F("[+] COV Delay => "));
+    debugPrint("[+] COV Delay => ");
     debugPrintlnCmd(dly);
     writeDataMemory(0x9279, dly, 2);
   }
@@ -567,14 +559,14 @@ void bq76952::setCellUndervoltageProtection(unsigned int mv, unsigned int ms) {
   if(thresh < 20 || thresh > 90)
     thresh = 50;
   else {
-    debugPrint(F("[+] CUV Threshold => "));
+    debugPrint("[+] CUV Threshold => ");
     debugPrintlnCmd(thresh);
     writeDataMemory(0x9275, thresh, 1);
   }
   if(dly < 1 || dly > 2047)
     dly = 74;
   else {
-    debugPrint(F("[+] CUV Delay => "));
+    debugPrint("[+] CUV Delay => ");
     debugPrintlnCmd(dly);
     writeDataMemory(0x9276, dly, 2);
   }
@@ -587,14 +579,14 @@ void bq76952::setChargingOvercurrentProtection(byte mv, byte ms) {
   if(thresh < 2 || thresh > 62)
     thresh = 2;
   else {
-    debugPrint(F("[+] OCC Threshold => "));
+    debugPrint("[+] OCC Threshold => ");
     debugPrintlnCmd(thresh);
     writeDataMemory(0x9280, thresh, 1);
   }
   if(dly < 1 || dly > 127)
     dly = 4;
   else {
-    debugPrint(F("[+] OCC Delay => "));
+    debugPrint("[+] OCC Delay => ");
     debugPrintlnCmd(dly);
     writeDataMemory(0x9281, dly, 1);
   }
@@ -607,14 +599,14 @@ void bq76952::setDischargingOvercurrentProtection(byte mv, byte ms) {
   if(thresh < 2 || thresh > 100)
     thresh = 2;
   else {
-    debugPrint(F("[+] OCD Threshold => "));
+    debugPrint("[+] OCD Threshold => ");
     debugPrintlnCmd(thresh);
     writeDataMemory(0x9282, thresh, 1);
   }
   if(dly < 1 || dly > 127)
     dly = 1;
   else {
-    debugPrint(F("[+] OCD Delay => "));
+    debugPrint("[+] OCD Delay => ");
     debugPrintlnCmd(dly);
     writeDataMemory(0x9283, dly, 1);
   }
@@ -623,13 +615,13 @@ void bq76952::setDischargingOvercurrentProtection(byte mv, byte ms) {
 // Set user-defined discharging current protection
 void bq76952::setDischargingShortcircuitProtection(bq76952_scd_thresh thresh, unsigned int us) {
   byte dly = (byte)(us/15)+1;
-  debugPrint(F("[+] SCD Threshold => "));
+  debugPrint("[+] SCD Threshold => ");
   debugPrintlnCmd(thresh);
   writeDataMemory(0x9286, thresh, 1);
   if(dly < 1 || dly > 31)
     dly = 2;
   else {
-    debugPrint(F("[+] SCD Delay (uS) => "));
+    debugPrint("[+] SCD Delay (uS) => ");
     debugPrintlnCmd(dly);
     writeDataMemory(0x9287, dly, 1);
   }
@@ -640,14 +632,14 @@ void bq76952::setChargingTemperatureMaxLimit(signed int temp, byte sec) {
   if(temp < -40 || temp > 120)
     temp = 55;
   else {
-    debugPrint(F("[+] OTC Threshold => "));
+    debugPrint("[+] OTC Threshold => ");
     debugPrintlnCmd(temp);
     writeDataMemory(0x929A, temp, 1);
   }
   if(sec< 0 || sec > 255)
     sec = 2;
   else {
-    debugPrint(F("[+] OTC Delay => "));
+    debugPrint("[+] OTC Delay => ");
     debugPrintlnCmd(sec);
     writeDataMemory(0x929B, sec, 1);
   }
@@ -658,15 +650,13 @@ void bq76952::setDischargingTemperatureMaxLimit(signed int temp, byte sec) {
   if(temp < -40 || temp > 120)
     temp = 60;
   else {
-    debugPrint(F("[+] OTD Threshold => "));
-    debugPrintlnCmd(temp);
+    debugPrintf("[+] OTD Threshold => %#x\n", temp);
     writeDataMemory(0x929D, temp, 1);
   }
   if(sec< 0 || sec > 255)
     sec = 2;
   else {
-    debugPrint(F("[+] OTD Delay => "));
-    debugPrintlnCmd(sec);
+    debugPrintf("[+] OTD Delay => %#x\n", sec);
     writeDataMemory(0x929E, sec, 1);
   }
 }
@@ -693,35 +683,22 @@ void bq76952::debugPrintf(const char *format,...) {
 }
 
 // FTX: tested
-void bq76952::setDebug(bool d) {
-  BQ_DEBUG = d;
-}
 
 // Debug printing utilites
 void bq76952::debugPrint(const char* msg) {
-  if(BQ_DEBUG)
-    Serial.print(msg);
+  if(debugStrm)
+    debugStrm->print(msg);
 }
 
 void bq76952::debugPrintln(const char* msg) {
-  if(BQ_DEBUG)
-    Serial.println(msg);
-}
-
-void bq76952::debugPrint(const __FlashStringHelper* msg) {
-  if(BQ_DEBUG)
-    Serial.print(msg);
-}
-
-void bq76952::debugPrintln(const __FlashStringHelper* msg) {
-  if(BQ_DEBUG)
-    Serial.println(msg);
+  if(debugStrm)
+    debugStrm->println(msg);
 }
 
 void bq76952::debugPrintlnCmd(unsigned int cmd) {
-  if(BQ_DEBUG) {
-    Serial.print(F("0x"));
-    Serial.println(cmd, HEX);
+  if(debugStrm) {
+    debugStrm->print("0x");
+    debugStrm->println(cmd, HEX);
   }
 }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
