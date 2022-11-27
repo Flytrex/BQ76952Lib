@@ -84,9 +84,11 @@
 
 void bq76952::initBQ(void) {
   Wire.begin();
+  Wire.setTimeOut(2);
 }
 
 // return true is data available, false if timeout
+/*
 bool waitWithTimeout(uint32_t dt_ms, uint8_t bytes = 1) {
   auto start = millis();
   while(Wire.available() < bytes) {
@@ -96,6 +98,7 @@ bool waitWithTimeout(uint32_t dt_ms, uint8_t bytes = 1) {
   }
   return true;
 }
+*/
 
 
 /*
@@ -110,8 +113,12 @@ unsigned int bq76952::directCommand(byte command) {
   Wire.write(command);
   Wire.endTransmission();
 
-  Wire.requestFrom(BQ_I2C_ADDR, 2);
-  if(!waitWithTimeout(2, 2)) {
+  //digitalWrite(12, 1);        
+  Wire.requestFrom(BQ_I2C_ADDR, 2); // buggy - synchronous and waits for 1000ms https://github.com/espressif/esp-idf/issues/4999
+                                    // See also: https://github.com/ci4rail/esp-idf/commit/bb2e8831bf44286181d86abd3156b70b65363782
+  //digitalWrite(12, 0);        
+
+  if(Wire.available() < 2) {
     debugPrintln("[+] Direct Cmd TIMEOUT");
     return 0;
   }
@@ -214,7 +221,7 @@ bool reqestResponse(uint8_t reg, uint8_t size, uint8_t* buff) {
   Wire.endTransmission();
 
   Wire.requestFrom((uint8_t)BQ_I2C_ADDR, size);
-  if(!waitWithTimeout(2, size)) {
+  if(Wire.available() < size) {
     return false;
   }
 
