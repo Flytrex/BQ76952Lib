@@ -85,13 +85,16 @@ int bq76952::directCommandWrite(byte command, size_t size, int data)
    * "size" must match the command in datasheet - that's on the caller.
    * Many commands are read-only - that's also on the caller. 
    * return 0 on success, -1 on fail. */
-  uint8_t *puData = (uint8_t *) data; 
+  uint8_t *puData = (uint8_t *) &data; 
   int erc = 0;
-  checkbq(size <= 4, "%s: invalid size %lu", __func__, size);
+  checkbq(0 < size && size <= 4, "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(BQ_I2C_ADDR);
   checkbq(m_I2C->write(command), "%s: write(%02X) failed", __func__, command);
   checkbq(size == m_I2C->write(puData, size), "%s: write(data=%04X, size=%d) failed", __func__,  data, size);
-  checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", erc);
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", __func__, erc);
+  if (m_loud) {
+    message("%s(command=0x%02X, size=%d, data=0x%08X)", __func__, command, size, data);
+  }
   return 0;
 
   error:
@@ -121,36 +124,6 @@ int bq76952::directCommandRead(byte command, size_t size, int *o_data)
   error:
   return -1;
 }
-
-/*
-The direct commands are accessed using a 7-bit command address that is sent from
-a host through the device serial communications interface and either triggers an
-action, or provides a data value to be written to the device, or instructs the
-device to report data back to the host.
-*/
-// Send Direct command
-int bq76952::directCommand(byte command, uint16_t *o_response) 
-{
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(command);
-  Wire.endTransmission();
-  byte lsb, msb;
-
-  checkbq(2 == Wire.requestFrom(BQ_I2C_ADDR, 2), "command %02X timed out", command); 
-  // buggy - synchronous and waits for 1000ms https://github.com/espressif/esp-idf/issues/4999
-  // See also: https://github.com/ci4rail/esp-idf/commit/bb2e8831bf44286181d86abd3156b70b65363782   
-  lsb = Wire.read();
-  msb = Wire.read();
-
-  *o_response = (msb << 8 | lsb);
-  message("[+] Direct Cmd SENT -> 0x%02X", command);
-  message("[+] Direct Cmd RESP <- 0x%04X", *o_response);
-  return 0;
-
-  error:
-  return -1;
-}
-
 /*
 https://www.ti.com/document-viewer/lit/html/SLUUBY2B/GUID-725A7D59-C6EA-4DE7-8CD2-9B117C75A18D#TITLE-SLUUBY2T6140828-4B
 
