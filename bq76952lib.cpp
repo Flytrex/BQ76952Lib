@@ -7,14 +7,11 @@
 */
 
 #include "bq76952lib.h"
-#include <Wire.h>
-/*
-#if (defined(AVR))
-	#include <avr\pgmspace.h>
-#else
-	#include <pgmspace.h>
-#endif
-*/
+
+#include "util/dbg-macro.h"
+
+#define message(M, ...) debug("bq76952: " M, ##__VA_ARGS__)
+#define checkbq(A, M, ...) check(A, "bq76952: " M, ##__VA_ARGS__)
 
 // Library config
 #define DBG_BAUD            115200
@@ -82,24 +79,44 @@
 
 //// LOW LEVEL FUNCTIONS ////
 
-void bq76952::initBQ(void) {
-  Wire.begin();
-  Wire.setTimeOut(2);
+int bq76952::directCommandWrite(byte command, size_t size, int data)
+{
+  /* Transmit address+w, command address, and data.
+   * "size" must match the command in datasheet - that's on the caller.
+   * Many commands are read-only - that's also on the caller. 
+   * return 0 on success, -1 on fail. */
+  uint8_t *puData = (uint8_t *) data; 
+  int erc = 0;
+  checkbq(size <= 4, "%s: invalid size %lu", __func__, size);
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  checkbq(m_I2C->write(command), "%s: write(%02X) failed", __func__, command);
+  checkbq(size == m_I2C->write(puData, size), "%s: write(data=%04X, size=%d) failed", __func__,  data, size);
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", erc);
+  return 0;
+
+  error:
+  return -1;
 }
 
-// return true is data available, false if timeout
-/*
-bool waitWithTimeout(uint32_t dt_ms, uint8_t bytes = 1) {
-  auto start = millis();
-  while(Wire.available() < bytes) {
-    if(millis() - start > dt_ms )
-      return false;
-    delayMicroseconds(300);
+int bq76952::directCommandRead(byte command, size_t size, int *o_data)
+{
+  /* Transmit address+w, command adresss, repeated start, address+r, read data. */
+  uint8_t *puData = (uint8_t *) o_data; 
+  int erc = 0;
+  checkbq(size <= 4, "%s: invalid size %lu", __func__, size);
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  checkbq(m_I2C->write(command), "%s: write(%02X) failed", __func__, command);
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", __func__, erc);
+  checkbq(size == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, size)), 
+                                          "%s: requestFrom(expected=%d) received %d", __func__, size, erc);
+  for (int i = 0; i < size; ++i) {
+    o_data[i] = m_I2C->read();
   }
-  return true;
-}
-*/
+  return 0;
 
+  error:
+  return -1;
+}
 
 /*
 The direct commands are accessed using a 7-bit command address that is sent from
@@ -108,32 +125,26 @@ action, or provides a data value to be written to the device, or instructs the
 device to report data back to the host.
 */
 // Send Direct command
-unsigned int bq76952::directCommand(byte command) {
+int bq76952::directCommand(byte command, uint16_t *o_response) 
+{
   Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(command);
   Wire.endTransmission();
+  byte lsb, msb;
 
-  //digitalWrite(12, 1);        
-  Wire.requestFrom(BQ_I2C_ADDR, 2); // buggy - synchronous and waits for 1000ms https://github.com/espressif/esp-idf/issues/4999
-                                    // See also: https://github.com/ci4rail/esp-idf/commit/bb2e8831bf44286181d86abd3156b70b65363782
-  //digitalWrite(12, 0);        
+  checkbq(2 == Wire.requestFrom(BQ_I2C_ADDR, 2), "command %02X timed out", command); 
+  // buggy - synchronous and waits for 1000ms https://github.com/espressif/esp-idf/issues/4999
+  // See also: https://github.com/ci4rail/esp-idf/commit/bb2e8831bf44286181d86abd3156b70b65363782   
+  lsb = Wire.read();
+  msb = Wire.read();
 
-  if(Wire.available() < 2) {
-    debugPrintln("[+] Direct Cmd TIMEOUT");
-    return 0;
-  }
-  byte lsb = Wire.read();
-  byte msb = Wire.read();
+  *o_response = (msb << 8 | lsb);
+  message("[+] Direct Cmd SENT -> 0x%02X", command);
+  message("[+] Direct Cmd RESP <- 0x%04X", *o_response);
+  return 0;
 
-  uint16_t resp = (msb << 8 | lsb);
-  debugPrintf("[+] Direct Cmd SENT -> 0x%02X\n", command);
-  debugPrintf("[+] Direct Cmd RESP <- 0x%04X\n", resp);
-  //debugPrint("[+] Direct Cmd SENT -> ");
-  //debugPrintlnCmd((uint16_t)command);
-  //debugPrint("[+] Direct Cmd RESP <- ");
-  //debugPrintlnCmd((uint16_t)(msb << 8 | lsb));
-
-  return resp; // (unsigned int)(msb << 8 | lsb);
+  error:
+  return -1;
 }
 
 /*
@@ -169,35 +180,16 @@ or receiving data. In these cases, the host can simply write the subcommand into
 further data.
 */
 // Send Sub-command
-void bq76952::subCommand(unsigned int data) {
+void bq76952::subCommand(unsigned int data) 
+{
   Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write((byte*)&data, 2);
+  Wire.write((byte *) &data, 2);
   Wire.endTransmission();
-
-  debugPrint("[+] Sub Cmd SENT to 0x3E -> ");
-  debugPrintlnCmd((uint16_t)data);
-}
-
-// Read subcommand response
-unsigned int bq76952::subCommandResponseInt(void) {
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_RESP_START);
-  Wire.endTransmission();
-
-  Wire.requestFrom(BQ_I2C_ADDR, 2);
-  while(!Wire.available());
-  byte lsb = Wire.read();
-  byte msb = Wire.read();
-
-  debugPrint("[+] Sub Cmd uint16_t RESP at 0x40 -> ");
-  debugPrintlnCmd((uint16_t)(msb << 8 | lsb));
-
-  return (unsigned int)(msb << 8 | lsb);
+  message("[+] Sub Cmd SENT to 0x3E -> 0x%02X", data);
 }
 
 /*
-
   1. Write lower byte of subcommand to 0x3E.
   2. Write upper byte of subcommand to 0x3F.
   3. Read 0x3E and 0x3F. If this returns 0xFF, this indicates the subcommand has
@@ -214,14 +206,14 @@ unsigned int bq76952::subCommandResponseInt(void) {
   The checksum is calculated over (the content of) 0x3E, 0x3F, and the buffer data, it does not include the checksum or length in 0x60 and 0x61.
 */
 // FTX: tested
-bool reqestResponse(uint8_t reg, uint8_t size, uint8_t* buff) {
-
+bool reqestResponse(uint8_t reg, uint8_t size, uint8_t* buff) 
+{
   Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(reg);
   Wire.endTransmission();
 
   Wire.requestFrom((uint8_t)BQ_I2C_ADDR, size);
-  if(Wire.available() < size) {
+  if (Wire.available() < size) {
     return false;
   }
 
@@ -233,91 +225,75 @@ bool reqestResponse(uint8_t reg, uint8_t size, uint8_t* buff) {
 }
 
 // FTX: tested
-bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len ) {
-
+bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len) 
+{
   // 1+2. Write subCommand code to 0x3e
   Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write((byte*)&subCommand, 2);
+  Wire.write((byte *) &subCommand, 2);
   Wire.endTransmission();
+
+  byte replyLen = 0;
+  byte checksumFromDevice = 0;
+  byte chksum = 0;
 
   // 3. Readback subcommand code to veryfy completetion
   byte retrys = 10;
   do {
     uint16_t subCommandReadback;
-    if(! reqestResponse(CMD_DIR_SUBCMD_LOW, sizeof(subCommandReadback), (byte*)&subCommandReadback) ) {
-      debugPrint("[+] Sub Cmd TIMEOUT");
-      return false;
-    }
+    checkbq(reqestResponse(CMD_DIR_SUBCMD_LOW, sizeof(subCommandReadback), (byte *) &subCommandReadback), "subcommand timeout");
     retrys--;
-
-    if( retrys == 0) {
-        debugPrintf("[+] Timeout waitng for subcommand\n");
-        return false;
-    } else if(subCommandReadback == 0xffff || subCommandReadback == 0x1111) {
-      debugPrintf("[+] not ready -> expect %x recv %x %d\n", subCommand, subCommandReadback, retrys);
-      delayMicroseconds(300);
+    checkbq(retrys > 0, "timeout waitng for subcommand");
+    if(subCommandReadback == 0xffff || subCommandReadback == 0x1111) {
+      message("not ready -> expect %x recv %x %d", subCommand, subCommandReadback, retrys);
+      delay(1);
       continue;
-    } else if(subCommandReadback != subCommand) {
-        debugPrintf("[+] Bad Readback -> expect %x recv %x\n", subCommand, subCommandReadback);
-        return false;
-    } else 
-      break;
-  } while(true);
+    } 
+    else {
+      check(subCommandReadback == subCommand, "Bad Readback -> expect %x recv %x", subCommand, subCommandReadback);
+    }
+  } while (true);
 
   //4. Read the length of response from 0x61. 
-  byte replyLen = 0;
-  if(! reqestResponse(CMD_DIR_RESP_LEN, 1, &replyLen) ) {
-    debugPrint("[+] Sub Cmd TIMEOUT");
-    return false;
-  }
+  checkbq(reqestResponse(CMD_DIR_RESP_LEN, 1, &replyLen), "failed to read response")
   replyLen -= 4;
-  //debugPrint("[+] Reply Len -> ");
-  //debugPrintlnCmd(replyLen);
 
   //5. Read buffer starting at 0x40 for the expected length. 
-  if (replyLen > *buffer_len)
-    return false;
-
-  if(! reqestResponse(CMD_DIR_RESP_START, replyLen, buffer) ) {
-    debugPrint("[+] Sub Reply TIMEOUT");
+  checkbq(replyLen < *buffer, "reply len =")
+  if (replyLen > *buffer_len) {
     return false;
   }
 
+  checkbq(reqestResponse(CMD_DIR_RESP_START, replyLen, buffer), "subcommand %x reply timeout", subCommand);
   *buffer_len = replyLen;
 
   //6. Read the checksum at 0x60 and verify it matches the data read.
-  byte checksumFromDevice = 0;
-  if(! reqestResponse(CMD_DIR_RESP_CHKSUM, 1, &checksumFromDevice) ) {
-    debugPrint("[+] Sub CRC TIMEOUT");
-    return false;
-  }
+  check(reqestResponse(CMD_DIR_RESP_CHKSUM, 1, &checksumFromDevice), "sub CRC timeout");
 
-  byte chksum = 0;
   chksum = computeChecksum(chksum, LOW_BYTE(subCommand), true);
   chksum = computeChecksum(chksum, HIGH_BYTE(subCommand));
-  for(int i=0; i<replyLen; ++i)
+  for(int i=0; i < replyLen; ++i) {
     chksum = computeChecksum(chksum, buffer[i]);
-
-  if(chksum != checksumFromDevice) {
-    if(debugStrm)
-      debugStrm->printf("[+] Checksum err: calc %x recv %x\n", chksum, checksumFromDevice);
-    return false;
   }
-
+  checkbq(chksum == checksumFromDevice, "checksum err: calc %x recv %x\n", chksum, checksumFromDevice); 
   return true;
+
+  error:
+  return false;
 }
 
 // Enter config update mode
-void bq76952::enterConfigUpdate(void) {
+void bq76952::enterConfigUpdate(void) 
+{
   subCommand(0x0090);
-  delayMicroseconds(2000);
+  delay(500);
 }
 
 // Exit config update mode
-void bq76952::exitConfigUpdate(void) {
+void bq76952::exitConfigUpdate(void) 
+{
   subCommand(0x0092);
-  delayMicroseconds(1000);
+  delay(500);
 }
 
 /*
@@ -329,8 +305,10 @@ void bq76952::exitConfigUpdate(void) {
 	3. Modify settings as needed by writing updated data memory settings (for more information, see Data Memory Access).
 	4. Send the 0x0092 EXIT_CFG_UPDATE() command to resume firmware operation
 */
+
 // Write Byte to Data memory of BQ76952
-void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfBytes) {
+void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfBytes) 
+{
   byte chksum = 0;
   chksum = computeChecksum(chksum, BQ_I2C_ADDR);
   chksum = computeChecksum(chksum, CMD_DIR_SUBCMD_LOW);
@@ -338,13 +316,12 @@ void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfByt
   chksum = computeChecksum(chksum, HIGH_BYTE(addr));
   chksum = computeChecksum(chksum, data);
 
-  enterConfigUpdate();
   Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
   Wire.write(LOW_BYTE(addr));
   Wire.write(HIGH_BYTE(addr));
   Wire.write(LOW_BYTE(data));
-  if(noOfBytes == 2)
+  if(noOfBytes == 2)                                /* FIXME */
     Wire.write(HIGH_BYTE(data));
   Wire.endTransmission();
 
@@ -353,11 +330,11 @@ void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfByt
   Wire.write(chksum);
   Wire.write(0x05);   // size ? what about the case where noOfBytes = 2 ?
   Wire.endTransmission();
-  exitConfigUpdate();
 }
 
 // Read Byte from Data memory of BQ76952
-byte bq76952::readDataMemory(unsigned int addr) {
+byte bq76952::readDataMemory(unsigned int addr) 
+{
   Wire.beginTransmission(BQ_I2C_ADDR);
   Wire.write(CMD_DIR_SUBCMD_LOW);
   Wire.write(LOW_BYTE(addr));
@@ -369,8 +346,8 @@ byte bq76952::readDataMemory(unsigned int addr) {
   Wire.endTransmission();
 
   Wire.requestFrom(BQ_I2C_ADDR, 1);
-  while(!Wire.available());
-  return (byte)Wire.read();
+  while(!Wire.available());         /* FIXME */
+  return (byte) Wire.read();
 }
 
 // Compute checksum = ~(sum of all bytes)
@@ -387,25 +364,27 @@ byte bq76952::computeChecksum(byte oldChecksum, byte data, bool reset) {
 
 /////// API FUNCTIONS ///////
 
-bq76952::bq76952(byte alertPin) {
-	// Constructor
+int bq76952::begin(byte alertPin, TwoWire *i2c) 
+{
+  checkbq(0 <= alertPin && alertPin <= 22, "invalid pin number %d", alertPin);
+  m_alertPin = alertPin;
   pinMode(alertPin, INPUT);
-  // TODO - Attach IRQ here
-}
+  m_I2C = i2c;
+  return 0;
 
-void bq76952::begin(void) {
-  initBQ();
+  error:
+  return -1;
 }
-
+#if 0
 // FTX: tested
 bool bq76952::isConnected(void) {
   Wire.beginTransmission(BQ_I2C_ADDR);
   if(Wire.endTransmission() == 0) {
-    debugPrintln("[+] BQ76592 -> Connected on I2C");
+    message("[+] BQ76592 -> Connected on I2C");
     return true;
   }
   else {
-    debugPrintln("[+] BQ76592 -> Not Detected on I2C");
+    message("[+] BQ76592 -> Not Detected on I2C");
     return false;
   }
 }
@@ -516,7 +495,6 @@ void bq76952::setFET(bq76952_fet fet, bq76952_fet_state state) {
   }
   subCommand(subcmd);
 }
-
 // is Charging FET ON?
 bool bq76952::isCharging(void) {
   byte regData = (byte)directCommand(CMD_DIR_FET_STAT);
@@ -538,6 +516,8 @@ bool bq76952::isDischarging(void) {
   debugPrintln("[+] Discharging FET -> OFF");
   return false;
 }
+
+
 
 // Set user-defined overvoltage protection
 void bq76952::setCellOvervoltageProtection(unsigned int mv, unsigned int ms) {
@@ -667,45 +647,4 @@ void bq76952::setDischargingTemperatureMaxLimit(signed int temp, byte sec) {
     writeDataMemory(0x929E, sec, 1);
   }
 }
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-///// UTILITY FUNCTIONS /////
-
-
-
-void bq76952::debugPrintf(const char *format,...) {
-  if(!debugStrm)
-    return;
-
-  static char buffer[1000];    
-  va_list arguments_list;
-  va_start(arguments_list, format);
-  //size_t size_string = vsnprintf(NULL,0,format,arguments_list);  // useful for dynamic buffering
-  auto size_string = vsnprintf(buffer, sizeof(buffer), format, arguments_list);
-  va_end(arguments_list);
-
-  debugStrm->write(buffer, size_string);
-}
-
-// FTX: tested
-
-// Debug printing utilites
-void bq76952::debugPrint(const char* msg) {
-  if(debugStrm)
-    debugStrm->print(msg);
-}
-
-void bq76952::debugPrintln(const char* msg) {
-  if(debugStrm)
-    debugStrm->println(msg);
-}
-
-void bq76952::debugPrintlnCmd(unsigned int cmd) {
-  if(debugStrm) {
-    debugStrm->print("0x");
-    debugStrm->println(cmd, HEX);
-  }
-}
-////////////////////////////////////////////////////////////////////////////////////////////////////////
+#endif

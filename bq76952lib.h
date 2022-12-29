@@ -5,12 +5,15 @@
 * License     :   MIT
 * This code is published as open source software. Feel free to share/modify.
 */
+#pragma once
 
 #if defined(ARDUINO) && ARDUINO >= 100
 	#include "Arduino.h"
 #else
 	#include "WProgram.h"
 #endif
+
+#include <Wire.h>
 
 enum bq76952_thermistor {
 	TS1,
@@ -75,9 +78,13 @@ typedef union temperatureProtection {
 } bq76952_temperature_t;
 
 class bq76952 {
+private:
+	TwoWire *m_I2C;
+	int m_alertPin;
+
 public:
-	bq76952(byte);
-	void begin(void);
+	bq76952() = default;
+	int begin(byte alertPin, TwoWire *I2C);
 	void reset(void);
 	bool isConnected(void);
 	unsigned int getCellVoltage(byte cellNumber);
@@ -91,6 +98,10 @@ public:
 	bool isDischarging(void);
 	bool isCharging(void);
 
+	int directCommandWrite(byte command, size_t size, int data);
+	int directCommandRead(byte command, size_t size, int *o_data);
+
+
 	void setCellOvervoltageProtection(unsigned int, unsigned int);
 	void setCellUndervoltageProtection(unsigned int, unsigned int);
 	void setChargingOvercurrentProtection(byte, byte);
@@ -100,16 +111,7 @@ public:
 	void setDischargingTemperatureMaxLimit(signed int, byte);
 
 	bool subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len );
-
-	void debugPrint(const char*);
-	void debugPrintln(const char*);
-	void debugPrintlnCmd(unsigned int cmd);
-
-	void debugPrintf(const char *format,...) __attribute__ ((format (printf, 2, 3))) ;
-	void setDebugStrm(Stream* s)	{ debugStrm = s; }
-
-	void initBQ(void);
-	unsigned int directCommand(byte);
+	int directCommand(byte command, uint16_t *o_response);
 	void subCommand(unsigned int);
 	unsigned int subCommandResponseInt(void);
 	void enterConfigUpdate(void);
@@ -117,7 +119,4 @@ public:
 	byte computeChecksum(byte, byte, bool reset=false);
 	void writeDataMemory(unsigned int , unsigned int, byte);
 	byte readDataMemory(unsigned int);
-
-private:
-	Stream* debugStrm;
 };
