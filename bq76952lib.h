@@ -83,6 +83,7 @@ private:
 	int m_alertPin;
 	bool m_loud;
 
+	int m_subCommandPrologue(int command, size_t size);
 public:
 	bq76952() = default;
 	int begin(byte alertPin, TwoWire *I2C, bool loud = false);
@@ -101,6 +102,8 @@ public:
 
 	int directCommandWrite(byte command, size_t size, int data);
 	int directCommandRead(byte command, size_t size, int *o_data);
+	int subCommandRead(int command, size_t size, byte *o_data);
+	int subCommandWrite(int command, size_t size, int data);
 
 
 	void setCellOvervoltageProtection(unsigned int, unsigned int);
@@ -117,7 +120,6 @@ public:
 	unsigned int subCommandResponseInt(void);
 	void enterConfigUpdate(void);
 	void exitConfigUpdate(void);
-	byte computeChecksum(byte, byte, bool reset=false);
 	void writeDataMemory(unsigned int , unsigned int, byte);
 	byte readDataMemory(unsigned int);
 };

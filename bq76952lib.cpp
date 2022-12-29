@@ -18,11 +18,12 @@
 #define BQ_I2C_ADDR   0x08
 
 // BQ76952 - Address Map
-#define CMD_DIR_SUBCMD_LOW            0x3E
-#define CMD_DIR_SUBCMD_HI             0x3F
-#define CMD_DIR_RESP_LEN              0x61
-#define CMD_DIR_RESP_START            0x40
-#define CMD_DIR_RESP_CHKSUM           0x60
+#define CMD_DIR_SUBCMD_LOW            ((byte) 0x3E)
+#define CMD_DIR_SUBCMD_HI             ((byte) 0x3F)
+#define CMD_DIR_RESP_LEN              ((byte) 0x61)
+#define CMD_DIR_RESP_START            ((byte) 0x40)
+#define CMD_DIR_RESP_CHKSUM           ((byte) 0x60)
+#define MAX_DATA_SIZE (CMD_DIR_RESP_CHKSUM - CMD_DIR_RESP_START)
 
 // BQ76952 - Voltage measurement commands
 #define CMD_READ_VOLTAGE_CELL_1   0x14
@@ -87,7 +88,7 @@ int bq76952::directCommandWrite(byte command, size_t size, int data)
    * return 0 on success, -1 on fail. */
   uint8_t *puData = (uint8_t *) &data; 
   int erc = 0;
-  checkbq(0 < size && size <= 4, "%s: invalid size %lu", __func__, size);
+  checkbq(0 < size && size <= 2, "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(BQ_I2C_ADDR);
   checkbq(m_I2C->write(command), "%s: write(%02X) failed", __func__, command);
   checkbq(size == m_I2C->write(puData, size), "%s: write(data=%04X, size=%d) failed", __func__,  data, size);
@@ -107,7 +108,7 @@ int bq76952::directCommandRead(byte command, size_t size, int *o_data)
   uint8_t *puData = (uint8_t *) o_data; 
   *o_data = 0;
   int erc = 0;
-  checkbq(0 < size && size <= 4, "%s: invalid size %lu", __func__, size);
+  checkbq(0 < size && size <= 2, "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(BQ_I2C_ADDR);
   checkbq(m_I2C->write(command), "%s: write(0x%02X) failed", __func__, command);
   checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", __func__, erc);
@@ -124,139 +125,98 @@ int bq76952::directCommandRead(byte command, size_t size, int *o_data)
   error:
   return -1;
 }
-/*
-https://www.ti.com/document-viewer/lit/html/SLUUBY2B/GUID-725A7D59-C6EA-4DE7-8CD2-9B117C75A18D#TITLE-SLUUBY2T6140828-4B
 
-Subcommands are additional commands that are accessed indirectly using the 7-bit
-command address space and provide the capability for block data transfers. When
-a subcommand is initiated, a 16-bit subcommand address is first written to the
-7-bit command addresses 0x3E (lower byte) and 0x3F (upper byte). The device
-initially assumes a read-back of data may be needed, and auto-populates existing
-data into the 32-byte transfer buffer (which uses 7-bit command addresses
-0x40–0x5F), and writes the checksum for this data into address 0x60. If the host
-instead intends to write data into the device, the host will overwrite the new
-data into the transfer buffer, a checksum for the data into address 0x60, and
-the data length into address 0x61. As soon as address 0x61 is written, the
-device checks the checksum written into 0x60 with the data written into
-0x40-0x5F, and if this is correct, it proceeds to transfer the data from the
-transfer buffer into the device's memory.
-
-The checksum is the 8-bit sum of the subcommand bytes (0x3E and 0x3F) plus the
-number of bytes used in the transfer buffer, then the result is bitwise
-inverted. The verification cannot take place until the data length is written,
-so the device realizes how many bytes in the transfer buffer are included. The
-checksum and data length must be written together as a word in order to be
-valid. The data length includes the two bytes in 0x3E and 0x3F, the two bytes in
-0x60 and 0x61, and the length of the transfer buffer. Therefore, if the entire
-32-byte transfer buffer is used, the data length will be 0x24.
-
-
-Some subcommands are only used to initiate an action and do not involve sending
-or receiving data. In these cases, the host can simply write the subcommand into
-0x3E and 0x3F, it is not necessary to write the length and checksum or any
-further data.
-*/
-// Send Sub-command
-void bq76952::subCommand(unsigned int data) 
+int bq76952::m_subCommandPrologue(int command, size_t size)
 {
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write((byte *) &data, 2);
-  Wire.endTransmission();
-  message("[+] Sub Cmd SENT to 0x3E -> 0x%02X", data);
-}
-
-/*
-  1. Write lower byte of subcommand to 0x3E.
-  2. Write upper byte of subcommand to 0x3F.
-  3. Read 0x3E and 0x3F. If this returns 0xFF, this indicates the subcommand has
-    not completed operation yet. When the subcommand has completed, the readback
-    will return what was originally written. Continue reading 0x3E and 0x3F until
-    it returns what was written originally. Note: this response only applies to
-    subcommands that return data to be read back. 
-  4. Read the length of response from 0x61. 
-  5. Read buffer starting at 0x40 for the expected length. 
-  6. Read the checksum at 0x60 and verify it matches the data read.
-
-  Note: 0x61 provides the length of the buffer data plus 4 (that is, length of the buffer data plus the length of 0x3E and 0x3F plus the length of 0x60 and 0x61).
-
-  The checksum is calculated over (the content of) 0x3E, 0x3F, and the buffer data, it does not include the checksum or length in 0x60 and 0x61.
-*/
-// FTX: tested
-bool reqestResponse(uint8_t reg, uint8_t size, uint8_t* buff) 
-{
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(reg);
-  Wire.endTransmission();
-
-  Wire.requestFrom((uint8_t)BQ_I2C_ADDR, size);
-  if (Wire.available() < size) {
-    return false;
-  }
-
-  for(int i=0; i<size; ++i) {
-    buff[i] = Wire.read();
-  }
-
-  return true;
-}
-
-// FTX: tested
-bool bq76952::subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len) 
-{
-  // 1+2. Write subCommand code to 0x3e
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write((byte *) &subCommand, 2);
-  Wire.endTransmission();
-
-  byte replyLen = 0;
-  byte checksumFromDevice = 0;
-  byte chksum = 0;
-
-  // 3. Readback subcommand code to veryfy completetion
-  byte retrys = 10;
-  do {
-    uint16_t subCommandReadback;
-    checkbq(reqestResponse(CMD_DIR_SUBCMD_LOW, sizeof(subCommandReadback), (byte *) &subCommandReadback), "subcommand timeout");
-    retrys--;
-    checkbq(retrys > 0, "timeout waitng for subcommand");
-    if(subCommandReadback == 0xffff || subCommandReadback == 0x1111) {
-      message("not ready -> expect %x recv %x %d", subCommand, subCommandReadback, retrys);
-      delay(1);
-      continue;
-    } 
-    else {
-      check(subCommandReadback == subCommand, "Bad Readback -> expect %x recv %x", subCommand, subCommandReadback);
-    }
-  } while (true);
-
-  //4. Read the length of response from 0x61. 
-  checkbq(reqestResponse(CMD_DIR_RESP_LEN, 1, &replyLen), "failed to read response")
-  replyLen -= 4;
-
-  //5. Read buffer starting at 0x40 for the expected length. 
-  checkbq(replyLen < *buffer, "reply len =")
-  if (replyLen > *buffer_len) {
-    return false;
-  }
-
-  checkbq(reqestResponse(CMD_DIR_RESP_START, replyLen, buffer), "subcommand %x reply timeout", subCommand);
-  *buffer_len = replyLen;
-
-  //6. Read the checksum at 0x60 and verify it matches the data read.
-  check(reqestResponse(CMD_DIR_RESP_CHKSUM, 1, &checksumFromDevice), "sub CRC timeout");
-
-  chksum = computeChecksum(chksum, LOW_BYTE(subCommand), true);
-  chksum = computeChecksum(chksum, HIGH_BYTE(subCommand));
-  for(int i=0; i < replyLen; ++i) {
-    chksum = computeChecksum(chksum, buffer[i]);
-  }
-  checkbq(chksum == checksumFromDevice, "checksum err: calc %x recv %x\n", chksum, checksumFromDevice); 
-  return true;
+  byte *puCmd = (byte *) &command;
+  int erc = 0;
+  checkbq(0 <= size && size <= (CMD_DIR_RESP_CHKSUM - CMD_DIR_RESP_START), "%s: invalid size %lu", __func__, size);
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_SUBCMD_LOW);
+  checkbq(2 == m_I2C->write(puCmd, 2), "%s(cmd=0x%04X): failed to write subcommand address", __func__, command);
+  return 0;
 
   error:
-  return false;
+  return -1;
+}
+
+int bq76952::subCommandWrite(int command, size_t size, int data) 
+{
+  uint8_t *puCmd = (uint8_t *) &command;
+  int erc = 0;
+  checkbq(!m_subCommandPrologue(command, size), "%s(scmd=0x%04X, size=%u): failed to transmit prologue", __func__, command, size);
+  if (size) {
+    m_I2C->beginTransmission(BQ_I2C_ADDR);
+    m_I2C->write(puCmd, size);
+  }
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, command, erc);
+  if (m_loud) {
+    message("%s(scmd=0x%04X, size=%d, data=0x%08X)", __func__, command, size, data);
+  }
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::subCommandRead(int command, size_t size, byte *o_data)
+{
+  static char buffer[MAX_DATA_SIZE] = {0};
+  /* Transmit address+w, command adresss (2 bytes), stop, 2ms wait,
+    start, address+r, read response length (0x61), read checksum (0x60) and compare. */
+  int erc = 0;
+  int responseLen = 0;
+  byte responseChecksum = 0, ourChecksum = 0;
+  byte *puCommand = (byte *) &command;
+  check(size, "%s(scmd=0x%04X, size=%u): size cannot be 0", __func__, command, size);
+  checkbq(!m_subCommandPrologue(command, size), "%s(scmd=0x%04X, size=%u): failed to transmit prologue", __func__, command, size);
+  memset(o_data, 0, size);
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, command, erc);
+  vTaskDelay(2);
+
+  /* reading length of response */
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_RESP_LEN); 
+  checkbq(!(erc = m_I2C->endTransmission(false)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, command, erc);
+  checkbq(1 == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, 1, 0)), "%s: requestFrom(expected=%d) received %d", __func__, size, erc);
+  responseLen = m_I2C->read() - 4;
+  checkbq(responseLen == size, "%s(scmd=0x%04X, size=%u): responseLen=%u mismatched", __func__, command, size, responseLen);
+  
+  /* reading response & calculating our checksum */
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_RESP_START);
+  checkbq(!(erc = m_I2C->endTransmission(false)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, command, erc);
+  checkbq(responseLen == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, responseLen, 0)), "%s: requestFrom(expected=%d) received %d", __func__, size, erc);
+  for (size_t i = 0; i < responseLen; ++i) {
+    o_data[i] = m_I2C->read();
+    ourChecksum += o_data[i];
+  }
+  ourChecksum += (puCommand[0] + puCommand[1]);
+  //ourChecksum += responseLen;
+  ourChecksum = ~ourChecksum;
+
+
+  /* reading checksum */
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_RESP_CHKSUM);
+  checkbq(!(erc = m_I2C->endTransmission(false)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, command, erc);
+  checkbq(1 == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, 1, 1)), "%s: requestFrom(expected=%d) received %d", __func__, size, erc);
+  responseChecksum = m_I2C->read();
+
+  /* comparing checksum */
+  check(ourChecksum == responseChecksum, 
+    "%s(scmd=0x%04X, size=%u): checksum mismatch. Ours = %d theirs = %d", __func__, command, size, ourChecksum, responseChecksum);
+
+  if (m_loud) {
+    int *o_data_int = (int *) o_data;
+    message("%s(scmd=0x%04X, size=%d) -> [%08X %08X %08X %08X %08X %08X %08X %08X]", __func__, command, size, responseLen,
+                                          o_data_int[0], o_data_int[1], o_data_int[2], o_data_int[3], 
+                                          o_data_int[4], o_data_int[5], o_data_int[6], o_data_int[7]);
+  }
+  return 0;
+
+  error:
+  return -1;
 }
 
 // Enter config update mode
@@ -282,7 +242,7 @@ void bq76952::exitConfigUpdate(void)
 	3. Modify settings as needed by writing updated data memory settings (for more information, see Data Memory Access).
 	4. Send the 0x0092 EXIT_CFG_UPDATE() command to resume firmware operation
 */
-
+#if 0
 // Write Byte to Data memory of BQ76952
 void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfBytes) 
 {
@@ -335,7 +295,7 @@ byte bq76952::computeChecksum(byte oldChecksum, byte data, bool reset) {
     oldChecksum = ~(oldChecksum) + data;
   return ~(oldChecksum);
 }
-
+#endif
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
