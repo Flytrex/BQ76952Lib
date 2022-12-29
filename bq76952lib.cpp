@@ -102,15 +102,19 @@ int bq76952::directCommandRead(byte command, size_t size, int *o_data)
 {
   /* Transmit address+w, command adresss, repeated start, address+r, read data. */
   uint8_t *puData = (uint8_t *) o_data; 
+  *o_data = 0;
   int erc = 0;
-  checkbq(size <= 4, "%s: invalid size %lu", __func__, size);
+  checkbq(0 < size && size <= 4, "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(BQ_I2C_ADDR);
-  checkbq(m_I2C->write(command), "%s: write(%02X) failed", __func__, command);
+  checkbq(m_I2C->write(command), "%s: write(0x%02X) failed", __func__, command);
   checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", __func__, erc);
   checkbq(size == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, size)), 
                                           "%s: requestFrom(expected=%d) received %d", __func__, size, erc);
   for (int i = 0; i < size; ++i) {
-    o_data[i] = m_I2C->read();
+    puData[i] = m_I2C->read();
+  }
+  if (m_loud) {
+    message("%s(command=0x%02X, size=%d) -> 0x%08X", __func__, command, size, *o_data);
   }
   return 0;
 
@@ -364,12 +368,15 @@ byte bq76952::computeChecksum(byte oldChecksum, byte data, bool reset) {
 
 /////// API FUNCTIONS ///////
 
-int bq76952::begin(byte alertPin, TwoWire *i2c) 
+int bq76952::begin(byte alertPin, TwoWire *i2c, bool loud) 
 {
-  checkbq(0 <= alertPin && alertPin <= 22, "invalid pin number %d", alertPin);
+  checkbq(0 <= alertPin && alertPin <= 44, "invalid pin number %d", alertPin);
   m_alertPin = alertPin;
+  m_loud = loud;
   pinMode(alertPin, INPUT);
   m_I2C = i2c;
+  checkbq(m_I2C->begin(), "%s: failed to init I2C", __func__);
+  m_I2C->setTimeOut(2);
   return 0;
 
   error:

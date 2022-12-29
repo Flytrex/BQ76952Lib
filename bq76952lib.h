@@ -81,10 +81,11 @@ class bq76952 {
 private:
 	TwoWire *m_I2C;
 	int m_alertPin;
+	bool m_loud;
 
 public:
 	bq76952() = default;
-	int begin(byte alertPin, TwoWire *I2C);
+	int begin(byte alertPin, TwoWire *I2C, bool loud = false);
 	void reset(void);
 	bool isConnected(void);
 	unsigned int getCellVoltage(byte cellNumber);
