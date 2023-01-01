@@ -82,9 +82,29 @@ private:
 	TwoWire *m_I2C;
 	int m_alertPin;
 	bool m_loud;
+	bool m_inUpdateConfig;
+	byte m_RAMAccessBuffer[32];
 
-	int m_subCommandPrologue(int command, size_t size);
+	int m_writeBulkAddress(int command, size_t size);
+	int m_bulkWrite(int address, int size, byte *data);
 public:
+	int m_bulkRead(int address, int expectedSize, byte *o_data);
+	int m_directCommandWrite(byte command, size_t size, int data);
+	int m_directCommandRead(byte command, size_t size, int *o_data);
+	int m_subCommandRead(int address, size_t size, byte *o_data);
+	int m_subCommandWrite(int command, size_t size, int data);
+
+	int m_memReadI8(int address, byte *o_data);
+	int m_memReadI16(int address, short *o_data);
+	int m_memReadI32(int address, int *o_data);
+	int m_memReadF32(int address, float *o_data);
+
+	int m_memWriteI8(int address, byte data);
+	int m_memWriteI16(int address, short data);
+	int m_memWriteI32(int address, int data);
+	int m_memWriteF32(int address, float data);
+
+	
 	bq76952() = default;
 	int begin(byte alertPin, TwoWire *I2C, bool loud = false);
 	void reset(void);
@@ -100,10 +120,6 @@ public:
 	bool isDischarging(void);
 	bool isCharging(void);
 
-	int directCommandWrite(byte command, size_t size, int data);
-	int directCommandRead(byte command, size_t size, int *o_data);
-	int subCommandRead(int command, size_t size, byte *o_data);
-	int subCommandWrite(int command, size_t size, int data);
 
 
 	void setCellOvervoltageProtection(unsigned int, unsigned int);
