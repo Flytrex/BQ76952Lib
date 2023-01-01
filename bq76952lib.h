@@ -87,12 +87,13 @@ private:
 
 	int m_writeBulkAddress(int command, size_t size);
 	int m_bulkWrite(int address, int size, byte *data);
+	int m_pollTransferSetup(int address, unsigned short maxWait = 10);
 public:
 	int m_bulkRead(int address, int expectedSize, byte *o_data);
 	int m_directCommandWrite(byte command, size_t size, int data);
 	int m_directCommandRead(byte command, size_t size, int *o_data);
 	int m_subCommandRead(int address, size_t size, byte *o_data);
-	int m_subCommandWrite(int command, size_t size, int data);
+	int m_subCommandWrite(int command, size_t size = 0, byte *data = nullptr);
 
 	int m_memReadI8(int address, byte *o_data);
 	int m_memReadI16(int address, short *o_data);
@@ -103,6 +104,9 @@ public:
 	int m_memWriteI16(int address, short data);
 	int m_memWriteI32(int address, int data);
 	int m_memWriteF32(int address, float data);
+
+	int m_enterConfigUpdate(void);
+	int m_exitConfigUpdate(void);
 
 	
 	bq76952() = default;
@@ -130,12 +134,4 @@ public:
 	void setDischargingShortcircuitProtection(bq76952_scd_thresh, unsigned int);
 	void setDischargingTemperatureMaxLimit(signed int, byte);
 
-	bool subCommandWithResponse(uint16_t subCommand, uint8_t* buffer, uint8_t* buffer_len );
-	int directCommand(byte command, uint16_t *o_response);
-	void subCommand(unsigned int);
-	unsigned int subCommandResponseInt(void);
-	void enterConfigUpdate(void);
-	void exitConfigUpdate(void);
-	void writeDataMemory(unsigned int , unsigned int, byte);
-	byte readDataMemory(unsigned int);
 };

@@ -8,6 +8,8 @@
 
 #include "bq76952lib.h"
 
+#include <cfloat>
+
 #include "util/dbg-macro.h"
 
 #define message(M, ...) debug("bq76952: " M, ##__VA_ARGS__)
@@ -23,7 +25,7 @@
 #define CMD_DIR_RESP_LEN              ((byte) 0x61)
 #define CMD_DIR_RESP_START            ((byte) 0x40)
 #define CMD_DIR_RESP_CHKSUM           ((byte) 0x60)
-#define MAX_DATA_SIZE (CMD_DIR_RESP_CHKSUM - CMD_DIR_RESP_START)
+#define MAX_TRANSFER_SIZE (CMD_DIR_RESP_CHKSUM - CMD_DIR_RESP_START)
 
 // BQ76952 - Voltage measurement commands
 #define CMD_READ_VOLTAGE_CELL_1   0x14
@@ -133,31 +135,45 @@ int bq76952::m_writeBulkAddress(int command, size_t size)
   checkbq(0 <= size && size <= (CMD_DIR_RESP_CHKSUM - CMD_DIR_RESP_START), "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(BQ_I2C_ADDR);
   m_I2C->write(CMD_DIR_SUBCMD_LOW);
-  checkbq(2 == m_I2C->write(puCmd, 2), "%s(cmd=0x%04X): failed to write subcommand address", __func__, command);
+  m_I2C->write(puCmd, 2);
   return 0;
 
   error:
   return -1;
 }
 
-int bq76952::m_subCommandWrite(int command, size_t size, int data) 
+int bq76952::m_subCommandWrite(int command, size_t size, byte *data) 
 {
-  uint8_t *puCmd = (uint8_t *) &command;
-  int erc = 0;
-  checkbq(!m_writeBulkAddress(command, size), "%s(scmd=0x%04X, size=%u): failed to transmit prologue", __func__, command, size);
-  if (size) {
-    m_I2C->beginTransmission(BQ_I2C_ADDR);
-    m_I2C->write(puCmd, size);
-  }
-  checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, command, erc);
-  if (m_loud) {
-    message("%s(scmd=0x%04X, size=%d, data=0x%08X)", __func__, command, size, data);
-  }
-  return 0;
-
-  error:
-  return -1;
+  return m_bulkWrite(command, size, data);
 }
+
+int bq76952::m_pollTransferSetup(int address, unsigned short maxWait)
+{
+    int erc = 0;
+    bool success = false;
+    int readback = 0;
+    byte *puReadback = (byte *) &readback;
+    size_t waitStart = xTaskGetTickCount();
+    while (xTaskGetTickCount() - waitStart < maxWait) {
+      m_I2C->beginTransmission(BQ_I2C_ADDR);
+      m_I2C->write((byte) CMD_DIR_SUBCMD_LOW); 
+      checkbq(!(erc = m_I2C->endTransmission(false)), 
+              "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+      checkbq(2 == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, 2, 1)), 
+              "%s: requestFrom(expected=%d) received %d", __func__, 2, erc);
+      puReadback[0] = m_I2C->read();
+      puReadback[1] = m_I2C->read();
+      if (readback == address) {
+        success = true;
+        break;
+      }
+    }
+    checkbq(success, "%s(scmd=0x%04X): failed to verify transfer setup in %d ms", __func__, address, maxWait);
+    return 0;
+
+    error:
+    return -1;
+  }
 
 int bq76952::m_bulkRead(int address, int expectedSize, byte *o_data)
 {
@@ -173,29 +189,8 @@ int bq76952::m_bulkRead(int address, int expectedSize, byte *o_data)
   checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
 
   /* wait for transfer setup */
-  {
-    bool success = false;
-    const size_t maxWait = 10;
-    int readback = 0;
-    byte *puReadback = (byte *) &readback;
-    size_t waitStart = xTaskGetTickCount();
-    while (xTaskGetTickCount() - waitStart < maxWait) {
-      m_I2C->beginTransmission(BQ_I2C_ADDR);
-      m_I2C->write((byte) CMD_DIR_SUBCMD_LOW); 
-      checkbq(!(erc = m_I2C->endTransmission(false)), 
-              "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
-      checkbq(2 == (erc = m_I2C->requestFrom(BQ_I2C_ADDR, 2, 1)), 
-              "%s: requestFrom(expected=%d) received %d", __func__, expectedSize, erc);
-      puReadback[0] = m_I2C->read();
-      puReadback[1] = m_I2C->read();
-      if (readback == address) {
-        success = true;
-        break;
-      }
-    }
-    check(success, "%s(scmd=0x%04X, expectedSize=%u): failed to read in 10 ms", __func__, address, expectedSize);
-  }
-
+  checkbq(!m_pollTransferSetup(address), "%s(scmd=0x%04X, expectedSize=%u): transfer setup timed out", __func__, address, expectedSize);
+  
   /* read response length */
   m_I2C->beginTransmission(BQ_I2C_ADDR);
   m_I2C->write((byte) CMD_DIR_RESP_LEN); 
@@ -230,7 +225,7 @@ int bq76952::m_bulkRead(int address, int expectedSize, byte *o_data)
   if (m_loud) {
     int *o_data_int = (int *) o_data;
     message("%s(scmd=0x%04X, expectedSize=%d) -> [%08X %08X %08X %08X %08X %08X %08X %08X]", 
-              __func__, address, expectedSize, responseLen,
+              __func__, address, expectedSize,
                       o_data_int[0], o_data_int[1], o_data_int[2], o_data_int[3], 
                       o_data_int[4], o_data_int[5], o_data_int[6], o_data_int[7]);
   }
@@ -274,7 +269,7 @@ int bq76952::m_memReadI16(int address, short *o_data)
 int bq76952::m_memReadI32(int address, int *o_data)
 {
   check(!m_bulkRead(address, 32, m_RAMAccessBuffer), "%s(0x%02X): failed to read", __func__, address);
-  *o_data = *((int *) m_RAMAccessBuffer);
+  *o_data = *((int32_t *) m_RAMAccessBuffer);
   if (m_loud) {
     message("%s(address=0x%04X) -> 0x%08X (%d)", __func__, address, *o_data, *o_data);
   }
@@ -297,86 +292,161 @@ int bq76952::m_memReadF32(int address, float *o_data)
   return -1;
 }
 
-
-// Enter config update mode
-void bq76952::enterConfigUpdate(void) 
+int bq76952::m_bulkWrite(int address, int size, byte *data)
 {
-  subCommand(0x0090);
+  int erc = 0;
+  byte checksum = 0;
+  byte *puAddress = (byte *) &address;
+  /* set r/w adresss on device */
+  checkbq(!m_writeBulkAddress(address, size), "%s(scmd=0x%04X, size=%u): failed to transmit prologue", __func__, address, size);
+  checkbq(!(erc = m_I2C->endTransmission(true)), 
+              "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+  if (size == 0) {
+    /* nothing else to do here */
+    if (m_loud) {
+      message("%s(address=0x%04X, size=0) -> [OK]", __func__, address);
+    }
+    return 0;
+  }
+
+  /* wait for transfer setup */
+  checkbq(!m_pollTransferSetup(address), "%s(scmd=0x%04X, size=%u): transfer setup timed out", __func__, address, size);
+  checkbq(!(erc = m_I2C->endTransmission(true)), 
+              "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+
+  /* write data to device transfer buffer */
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_RESP_START);
+  for (int i = 0; i < size; ++i) {
+    m_I2C->write(data[i]);
+    checksum += data[i];
+  }
+  checksum += (puAddress[0] + puAddress[1]);
+  checksum = ~checksum;
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+
+  /* write checksum */
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_RESP_CHKSUM);
+  m_I2C->write(checksum);
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+
+  /* write transfer length */
+  m_I2C->beginTransmission(BQ_I2C_ADDR);
+  m_I2C->write(CMD_DIR_RESP_LEN);
+  m_I2C->write(size + 4);
+  checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+  if (m_loud) {
+    int *data_int = (int *) data;
+    message("%s(scmd=0x%04X, size=%d, data = [%08X %08X %08X %08X %08X %08X %08X %08X]) -> [OK]", 
+            __func__, address,  size, data_int[0], data_int[1], data_int[2], data_int[3], 
+                                        data_int[4], data_int[5], data_int[6], data_int[7]);
+  }
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::m_memWriteI8(int address, byte data)
+{
+  byte readback = INT_MIN;
+  check(m_inUpdateConfig, "%s(address=0x%04X, data=0x%02X): call enterConfigUpdate first", __func__, address, data);
+  m_RAMAccessBuffer[0] = data;
+  check(!m_memReadI8(address, &readback), "%s(address=0x%04X, data=0x%02X): readback failed", __func__, address, data);
+  check(!m_bulkWrite(address, sizeof(byte), (byte *) &data), 
+          "%s(address=0x%04X, data=0x%02X): transfer failed", __func__, address, data);
+  if (m_loud) {
+    message("%s(address=0x%04X, data=0x%02X) -> [OK]", __func__, address, data);
+  }
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::m_memWriteI16(int address, short data)
+{
+  short readback = INT_MIN;
+  check(m_inUpdateConfig, "%s(address=0x%04X, data=0x%04X): call enterConfigUpdate first", __func__, address, data);
+  *((short *) m_RAMAccessBuffer) = data;
+  check(!m_bulkWrite(address, sizeof(short), (byte *) &data), 
+          "%s(address=0x%04X, data=0x%04X): transfer failed", __func__, address, data);
+  check(!m_memReadI16(address, &readback), "%s(address=0x%04X, data=0x%04X): readback failed", __func__, address, data);
+  if (m_loud) {
+    message("%s(address=0x%04X, data=0x%04X) -> [OK]", __func__, address, data);
+  }
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::m_memWriteI32(int address, int data)
+{
+  int readback = INT_MIN;
+  check(m_inUpdateConfig, "%s(address=0x%04X, data=0x%08X): call enterConfigUpdate first", __func__, address, data);
+  *((int32_t *) m_RAMAccessBuffer) = data;
+  check(!m_bulkWrite(address, sizeof(int32_t), (byte *) &data), 
+          "%s(address=0x%04X, data=0x%08X): transfer failed", __func__, address, data);
+  check(!m_memReadI32(address, &readback), "%s(address=0x%04X, data=0x%08X): readback failed", __func__, address, data);
+  check(readback == data, "%s(address=0x%04X, data=0x%08X): failed to verify, got 0x%08X", __func__, address, data, readback);
+  if (m_loud) {
+    message("%s(address=0x%04X, data=0x%08X) -> [OK]", __func__, address, data);
+  }
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::m_memWriteF32(int address, float data)
+{
+  float readback = FLT_MAX;
+  check(m_inUpdateConfig, "%s(address=0x%04X, data=%f): call enterConfigUpdate first", __func__, address, data);
+  *((int32_t *) m_RAMAccessBuffer) = data;
+  check(!m_bulkWrite(address, sizeof(float), (byte *) &data), 
+          "%s(address=0x%04X, data=%f): transfer failed", __func__, address, data);
+  check(!m_memReadF32(address, &readback), "%s(address=0x%04X, data=%f): readback failed", __func__, address, data);
+  check(readback == data, "%s(address=0x%04X, data=%f): failed to verify, got %f", __func__, address, data, readback);
+  if (m_loud) {
+    message("%s(address=0x%04X, data=%f) -> [OK]", __func__, address, data);
+  }
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::m_enterConfigUpdate(void) 
+{
+  if (m_inUpdateConfig) {
+    return 0;
+  }
+  
+  check(!m_subCommandWrite(0x0090), "%s: failed to write subcommand", __func__);
   delay(500);
+  m_inUpdateConfig = true;
+  return 0;
+
+  error:
+  return -1;
 }
 
-// Exit config update mode
-void bq76952::exitConfigUpdate(void) 
+int bq76952::m_exitConfigUpdate(void) 
 {
-  subCommand(0x0092);
+  if (!m_inUpdateConfig) {
+    return 0;
+  }
+  
+  check(!m_subCommandWrite(0x0092), "%s: failed to write subcommand", __func__);
   delay(500);
+  m_inUpdateConfig = false;
+  return 0;
+
+  error:
+  return -1;
 }
-
-/*
-  https://www.ti.com/document-viewer/lit/html/SLUUBY2B/GUID-9ED2EB91-EA65-49C7-9667-53B029541C4D#TITLE-SLUUBY2T5345357-60
-
-  1. Place the device into CONFIG_UPDATE mode by sending the 0x0090 ENTER_CFG_UPDATE() subcommand. 
-      The device will then automatically disable the protection FETs if they are enabled.
-	2. Wait for the 0x12 Battery Status()[CFGUPDATE] flag to set.
-	3. Modify settings as needed by writing updated data memory settings (for more information, see Data Memory Access).
-	4. Send the 0x0092 EXIT_CFG_UPDATE() command to resume firmware operation
-*/
-#if 0
-// Write Byte to Data memory of BQ76952
-void bq76952::writeDataMemory(unsigned int addr, unsigned int data, byte noOfBytes) 
-{
-  byte chksum = 0;
-  chksum = computeChecksum(chksum, BQ_I2C_ADDR);
-  chksum = computeChecksum(chksum, CMD_DIR_SUBCMD_LOW);
-  chksum = computeChecksum(chksum, LOW_BYTE(addr));
-  chksum = computeChecksum(chksum, HIGH_BYTE(addr));
-  chksum = computeChecksum(chksum, data);
-
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write(LOW_BYTE(addr));
-  Wire.write(HIGH_BYTE(addr));
-  Wire.write(LOW_BYTE(data));
-  if(noOfBytes == 2)                                /* FIXME */
-    Wire.write(HIGH_BYTE(data));
-  Wire.endTransmission();
-
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_RESP_CHKSUM);
-  Wire.write(chksum);
-  Wire.write(0x05);   // size ? what about the case where noOfBytes = 2 ?
-  Wire.endTransmission();
-}
-
-// Read Byte from Data memory of BQ76952
-byte bq76952::readDataMemory(unsigned int addr) 
-{
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_SUBCMD_LOW);
-  Wire.write(LOW_BYTE(addr));
-  Wire.write(HIGH_BYTE(addr));
-  Wire.endTransmission();
-
-  Wire.beginTransmission(BQ_I2C_ADDR);
-  Wire.write(CMD_DIR_RESP_START);
-  Wire.endTransmission();
-
-  Wire.requestFrom(BQ_I2C_ADDR, 1);
-  while(!Wire.available());         /* FIXME */
-  return (byte) Wire.read();
-}
-
-// Compute checksum = ~(sum of all bytes)
-byte bq76952::computeChecksum(byte oldChecksum, byte data, bool reset) {
-  if(reset)
-    oldChecksum = data;
-  else
-    oldChecksum = ~(oldChecksum) + data;
-  return ~(oldChecksum);
-}
-#endif
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 /////// API FUNCTIONS ///////
 
