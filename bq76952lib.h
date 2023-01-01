@@ -1,6 +1,6 @@
 /*
 * Description :   Header file of BQ76952 BMS IC (by Texas Instruments) for Arduino platform.
-* Author      :   Pranjal Joshi
+* Author      :   Pranjal Joshi, Grisha Revzin @ Flytrex
 * Date        :   17/10/2020 
 * License     :   MIT
 * This code is published as open source software. Feel free to share/modify.
@@ -77,9 +77,13 @@ typedef union temperatureProtection {
 	} bits;
 } bq76952_temperature_t;
 
+
+#define BQ_I2C_DEFAULT_ADDRESS        0x08
+
 class bq76952 {
 private:
 	TwoWire *m_I2C;
+	int m_I2C_Address;
 	int m_alertPin;
 	bool m_loud;
 	bool m_inUpdateConfig;
@@ -107,10 +111,9 @@ public:
 
 	int m_enterConfigUpdate(void);
 	int m_exitConfigUpdate(void);
-
 	
 	bq76952() = default;
-	int begin(byte alertPin, TwoWire *I2C, bool loud = false);
+	int begin(byte alertPin, TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
 	void reset(void);
 	bool isConnected(void);
 	unsigned int getCellVoltage(byte cellNumber);
@@ -124,8 +127,6 @@ public:
 	bool isDischarging(void);
 	bool isCharging(void);
 
-
-
 	void setCellOvervoltageProtection(unsigned int, unsigned int);
 	void setCellUndervoltageProtection(unsigned int, unsigned int);
 	void setChargingOvercurrentProtection(byte, byte);
@@ -133,5 +134,4 @@ public:
 	void setDischargingOvercurrentProtection(byte, byte);
 	void setDischargingShortcircuitProtection(bq76952_scd_thresh, unsigned int);
 	void setDischargingTemperatureMaxLimit(signed int, byte);
-
 };
