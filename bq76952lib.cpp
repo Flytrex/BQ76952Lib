@@ -11,6 +11,7 @@
 #include <cfloat>
 
 #include "util/dbg-macro.h"
+#include "util/crc.h"
 
 #define message(M, ...) debug("bq76952: " M, ##__VA_ARGS__)
 #define checkbq(A, M, ...) check(A, "bq76952: " M, ##__VA_ARGS__)
@@ -75,6 +76,15 @@
 #define CELL_NO_TO_ADDR(cellNo) (0x14 + ((cellNo-1)*2))
 #define LOW_BYTE(data) (byte)(data & 0x00FF)
 #define HIGH_BYTE(data) (byte)((data >> 8) & 0x00FF)
+
+static const char *reg2str(int reg);
+
+typedef enum {
+	REG_TYPE_BYTE,
+	REG_TYPE_INT16,
+	REG_TYPE_INT32,
+	REG_TYPE_FLOAT,
+} BQRegType;
 
 //// LOW LEVEL FUNCTIONS ////
 
@@ -423,6 +433,7 @@ int bq76952::m_enterConfigUpdate(void)
   check(!m_subCommandWrite(0x0090), "%s: failed to write subcommand", __func__);
   delay(500);
   m_inUpdateConfig = true;
+  if (m_loud) message("entered CONFIG_UPDATE");
   return 0;
 
   error:
@@ -438,9 +449,121 @@ int bq76952::m_exitConfigUpdate(void)
   check(!m_subCommandWrite(0x0092), "%s: failed to write subcommand", __func__);
   delay(500);
   m_inUpdateConfig = false;
+  if (m_loud) message("exited CONFIG_UPDATE");
   return 0;
 
   error:
+  return -1;
+}
+
+int bq76952::configUpload(const BQConfig *config)
+{
+  int new_checksum = config->CRC32();
+  checkbq(!m_enterConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    uint16_t address = config->m_registers[i].getAddress();
+    int type = config->m_registers[i].getType();
+    int erc = 0;
+    if (m_loud) {
+      message("%s: [%3d/" XSTR(BQ76952_TOT_REGISTERS) "] uploading reg 0x%04X (%s) type %s",
+              __func__, i + 1, address, config->m_registers[i].getDescription(), reg2str(type));
+    }
+    switch (type) {
+      case REG_TYPE_BYTE: {
+        byte val = config->m_registers[i].getI8();
+        checkbq(!m_memWriteI8(address, val), 
+              "%s: failed to write reg 0x%04X: memWrite_I8 failed", __func__, address);
+        break;
+      }
+      case REG_TYPE_FLOAT: {
+        float val = config->m_registers[i].getF32();
+        checkbq(!m_memWriteF32(address, val), 
+              "%s: failed to write reg 0x%04X: memWrite_F32 failed", __func__, address);
+        break;
+      }
+      case REG_TYPE_INT16: {
+        unsigned int val = config->m_registers[i].getI16();
+        checkbq(!m_memWriteI16(address, val), 
+              "%s: failed to write reg 0x%04X: memWrite_I16 failed", __func__, address);
+        break;
+      }
+      case REG_TYPE_INT32: {
+        int32_t val = config->m_registers[i].getI32();
+        checkbq(!m_memWriteI32(address, val), 
+              "%s: failed to write reg 0x%04X: memWrite_I32 failed", __func__, address);
+        break;
+      }
+      default:
+        check_fatal(0, "%s: invalid type %d on register 0x%04X", __func__, type, address);
+      }
+  }
+  checkbq(!m_exitConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  checkbq(!m_configDownload(&m_currentConfig), "%s: configDownload failed", __func__);
+  checkbq(m_currentConfig.CRC32() == new_checksum, 
+        "%s: config readback checksum does not match: sent: 0x%08X, got: 0x%08X",
+        __func__, m_currentConfig.CRC32(), new_checksum);
+  if (m_loud) {
+     message("%s: config updated, checksum 0x%08X", __func__, new_checksum);
+  }
+  return 0;
+
+  error:
+  m_exitConfigUpdate();
+  return -1;
+}
+
+int bq76952::m_configDownload(BQConfig *config)
+{
+  check(!m_enterConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    uint16_t address = config->m_registers[i].getAddress();
+    int type = config->m_registers[i].getType();
+    int erc = 0;
+    if (m_loud) {
+      message("%s: [%3d/" XSTR(BQ76952_TOT_REGISTERS) "] downloading reg 0x%04X (%s) type %s",
+              __func__, i + 1, address, config->m_registers[i].getDescription(), reg2str(type));
+    }
+    switch (type) {
+      case REG_TYPE_BYTE: {
+        byte val = 0;
+        check(!m_memReadI8(address, &val), 
+              "%s: failed to read reg 0x%04X: memRead_I8 failed", __func__, address);
+        config->m_registers[i].setI8(val);
+        break;
+      }
+      case REG_TYPE_FLOAT: {
+        float val = 0;
+        check(!m_memReadF32(address, &val), 
+              "%s: failed to read reg 0x%04X: memRead_F32 failed", __func__, address);
+        config->m_registers[i].setF32(val);
+        break;
+      }
+      case REG_TYPE_INT16: {
+        short val = 0;
+        check(!m_memReadI16(address, &val), 
+              "%s: failed to read reg 0x%04X: memRead_I16 failed", __func__, address);
+        config->m_registers[i].setI16(val);
+        break;
+      }
+      case REG_TYPE_INT32: {
+        int val = 0;
+        check(!m_memReadI32(address, &val), 
+              "%s: failed to read reg 0x%04X: memRead_I32 failed", __func__, address);
+        config->m_registers[i].setI32(val);
+        break;
+      }
+      default:
+        check_fatal(0, "%s: invalid type %d on register 0x%04X", __func__, type, address);
+      }
+  }
+  if (m_loud) {
+     message("%s: config downloaded, crc 0x%08X", __func__, m_currentConfig.CRC32());
+  }
+  check(!m_exitConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  return 0;
+
+  error:
+  m_exitConfigUpdate();
   return -1;
 }
 
@@ -456,11 +579,19 @@ int bq76952::begin(byte alertPin, TwoWire *i2c, bool loud, byte address)
   m_I2C = i2c;
   checkbq(m_I2C->begin(), "%s: failed to init I2C", __func__);
   m_I2C->setTimeOut(2);
+  BQConfig::getDefaultConfig(&m_currentConfig);
+  check(!m_configDownload(&m_currentConfig), "%s(address=0x%02X): failed to download config", __func__, address);
   return 0;
 
   error:
   return -1;
 }
+
+int bq76952::configChecksum(void) const
+{
+  return m_currentConfig.CRC32();
+}
+
 #if 0
 // FTX: tested
 bool bq76952::isConnected(void) {
@@ -734,3 +865,149 @@ void bq76952::setDischargingTemperatureMaxLimit(signed int temp, byte sec) {
   }
 }
 #endif
+
+void BQConfig::getDefaultConfig(BQConfig *buf) 
+{
+  /* DEBUG: must be 272 registers (replace with auto-generated from default) */
+  buf->m_registers[0] = BQRegister(0x91E2, (short) 25390, "Int Gain");
+  buf->m_registers[1] = BQRegister(0x91A8, (float) 1e3, "CC Gain");
+  buf->m_registers[2] = BQRegister(0x9341, (byte) 40, "Cell Balance Min Delta (Relax)");
+}
+
+int BQConfig::CRC32(void) const
+{
+  uint32_t checksum = UINT32_MAX;
+  for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    checksum = ftx_util::CRC32(m_registers[i].m_value, m_registers[i].getSize(), checksum);
+  }
+  return checksum;
+}
+
+void BQConfig::setRegister(size_t i, const BQRegister &reg)
+{
+  check_fatal(i < BQ76952_TOT_REGISTERS, 
+              "%s: invalid access index %u (max" STR(BQ76952_TOT_REGISTERS) ")", __func__, i);
+  m_registers[i] = reg;
+}
+
+void BQRegister::setI8(byte val)
+{
+  m_type = REG_TYPE_BYTE;
+  m_value[0] = val;
+}
+
+void BQRegister::setF32(float val)
+{
+  m_type = REG_TYPE_FLOAT;
+  *((float *) m_value) = val;
+}
+
+void BQRegister::setI16(short val)
+{
+  m_type = REG_TYPE_INT16;
+  *((short *) m_value) = val;
+}
+
+void BQRegister::setI32(int32_t val)
+{
+  m_type = REG_TYPE_INT32;
+  *((int32_t *) m_value) = val;
+}
+
+byte BQRegister::getI8(void) const
+{
+  return m_value[0];
+}
+
+float BQRegister::getF32(void) const
+{
+  return *((float *) m_value);
+}
+
+short BQRegister::getI16(void) const
+{
+  return *((short *) m_value);
+}
+
+int32_t BQRegister::getI32(void) const
+{
+  return *((int32_t *) m_value);
+}
+
+BQRegister::BQRegister(void)
+{
+  m_descr = nullptr;
+}
+
+BQRegister::BQRegister(int address, byte val, const char *descr) 
+{
+  m_descr = descr;
+  m_address = (short) address % 0xFFFF;
+  setI8(val);
+}
+
+BQRegister::BQRegister(int address, float val, const char *descr)
+{
+  m_descr = descr;
+  m_address = (short) address % 0xFFFF;
+  setF32(val);
+}
+
+BQRegister::BQRegister(int address, short val, const char *descr)
+{
+  m_descr = descr;
+  m_address = (short) address % 0xFFFF;
+  setI16(val);
+}
+
+BQRegister::BQRegister(int address, int32_t val, const char *descr)
+{
+  m_descr = descr;
+  m_address = (short) address % 0xFFFF;
+  setI32(val);
+}
+
+size_t BQRegister::getSize(void) const
+{
+  switch (m_type) {
+    default:
+    case REG_TYPE_FLOAT:
+    case REG_TYPE_INT32:
+      return 4;
+    case REG_TYPE_INT16:
+      return 2;
+    case REG_TYPE_BYTE:
+      return 1;
+  }
+}
+
+static const char *reg2str(int reg)
+{
+  switch (reg) {
+  case REG_TYPE_FLOAT:
+    return "FLOAT32";
+  case REG_TYPE_BYTE:
+    return "INT8";
+  case REG_TYPE_INT16:
+    return "INT16";
+  case REG_TYPE_INT32:
+    return "INT32";
+  default:
+    return "INVALID";
+  }
+}
+
+int BQRegister::getType(void) const
+{
+  return m_type;
+}
+
+int BQRegister::getAddress(void) const
+{
+  return m_address;
+}
+
+const char *BQRegister::getDescription(void) const
+{
+  return m_descr;
+}

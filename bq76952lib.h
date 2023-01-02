@@ -77,6 +77,51 @@ typedef union temperatureProtection {
 	} bits;
 } bq76952_temperature_t;
 
+class BQConfig;
+
+class BQRegister {
+	int m_type;
+	byte m_value[4];
+	uint16_t m_address;
+	const char *m_descr;
+public:
+	BQRegister(void);
+	BQRegister(const BQRegister &rhs) = default;
+	BQRegister(int address, byte val, const char *descr = nullptr);
+	BQRegister(int address, float val, const char *descr = nullptr);
+	BQRegister(int address, short val, const char *descr = nullptr);
+	BQRegister(int address, int32_t val, const char *descr = nullptr);
+
+	void setI8(byte val);
+	void setF32(float val);
+	void setI16(short val);
+	void setI32(int32_t val);
+	byte getI8(void) const;
+	float getF32(void) const;
+	short getI16(void) const;
+	int32_t getI32(void) const;
+	size_t getSize(void) const;
+	int getType(void) const;
+	int getAddress(void) const;
+	const char *getDescription(void) const;
+
+	friend class BQConfig;
+};
+
+#define BQ76952_TOT_REGISTERS 3 // DEBUG: 272
+
+class bq76952;
+
+class BQConfig {
+	friend class bq76952;
+	BQRegister m_registers[BQ76952_TOT_REGISTERS];
+	int m_checksum;
+public:
+	BQConfig() = default;
+	static void getDefaultConfig(BQConfig *buf);
+	void setRegister(size_t i, const BQRegister &reg);
+	int CRC32(void) const;
+};
 
 #define BQ_I2C_DEFAULT_ADDRESS        0x08
 
@@ -88,11 +133,12 @@ private:
 	bool m_loud;
 	bool m_inUpdateConfig;
 	byte m_RAMAccessBuffer[32];
+	BQConfig m_currentConfig;
 
 	int m_writeBulkAddress(int command, size_t size);
 	int m_bulkWrite(int address, int size, byte *data);
 	int m_pollTransferSetup(int address, unsigned short maxWait = 10);
-public:
+
 	int m_bulkRead(int address, int expectedSize, byte *o_data);
 	int m_directCommandWrite(byte command, size_t size, int data);
 	int m_directCommandRead(byte command, size_t size, int *o_data);
@@ -111,9 +157,17 @@ public:
 
 	int m_enterConfigUpdate(void);
 	int m_exitConfigUpdate(void);
-	
+
+	int m_configDownload(BQConfig *buffer);
+
+public:
 	bq76952() = default;
 	int begin(byte alertPin, TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
+	int configUpload(const BQConfig *config);
+	int configChecksum(void) const;
+	
+
+
 	void reset(void);
 	bool isConnected(void);
 	unsigned int getCellVoltage(byte cellNumber);
