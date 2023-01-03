@@ -89,8 +89,8 @@ public:
 	BQRegister(const BQRegister &rhs) = default;
 	BQRegister(int address, byte val, const char *descr = nullptr);
 	BQRegister(int address, float val, const char *descr = nullptr);
-	BQRegister(int address, short val, const char *descr = nullptr);
-	BQRegister(int address, int32_t val, const char *descr = nullptr);
+	BQRegister(int address, uint16_t val, const char *descr = nullptr);
+	BQRegister(int address, uint32_t val, const char *descr = nullptr);
 
 	void setI8(byte val);
 	void setF32(float val);
@@ -108,7 +108,7 @@ public:
 	friend class BQConfig;
 };
 
-#define BQ76952_TOT_REGISTERS 3 // DEBUG: 272
+#define BQ76952_TOT_REGISTERS 272
 
 class bq76952;
 
@@ -134,6 +134,7 @@ private:
 	bool m_inUpdateConfig;
 	byte m_RAMAccessBuffer[32];
 	BQConfig m_currentConfig;
+	int m_defaultConfigCRC;
 
 	int m_writeBulkAddress(int command, size_t size);
 	int m_bulkWrite(int address, int size, byte *data);

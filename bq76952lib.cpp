@@ -459,6 +459,7 @@ int bq76952::m_exitConfigUpdate(void)
 int bq76952::configUpload(const BQConfig *config)
 {
   int new_checksum = config->CRC32();
+  message("%s: config upload started", __func__);
   checkbq(!m_enterConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
     uint16_t address = config->m_registers[i].getAddress();
@@ -498,13 +499,12 @@ int bq76952::configUpload(const BQConfig *config)
       }
   }
   checkbq(!m_exitConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  message("%s: config upload complete, reading back and verifying", __func__);
   checkbq(!m_configDownload(&m_currentConfig), "%s: configDownload failed", __func__);
   checkbq(m_currentConfig.CRC32() == new_checksum, 
         "%s: config readback checksum does not match: sent: 0x%08X, got: 0x%08X",
         __func__, m_currentConfig.CRC32(), new_checksum);
-  if (m_loud) {
-     message("%s: config updated, checksum 0x%08X", __func__, new_checksum);
-  }
+  message("%s: config uploaded and verified, checksum 0x%08X", __func__, new_checksum);
   return 0;
 
   error:
@@ -514,6 +514,7 @@ int bq76952::configUpload(const BQConfig *config)
 
 int bq76952::m_configDownload(BQConfig *config)
 {
+  message("%s: config download started", __func__);
   check(!m_enterConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
     uint16_t address = config->m_registers[i].getAddress();
@@ -556,10 +557,9 @@ int bq76952::m_configDownload(BQConfig *config)
         check_fatal(0, "%s: invalid type %d on register 0x%04X", __func__, type, address);
       }
   }
-  if (m_loud) {
-     message("%s: config downloaded, crc 0x%08X", __func__, m_currentConfig.CRC32());
-  }
   check(!m_exitConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  message("%s: config downloaded, crc 0x%08X (default is 0x%08X)", 
+              __func__, m_currentConfig.CRC32(), m_defaultConfigCRC);
   return 0;
 
   error:
@@ -580,6 +580,7 @@ int bq76952::begin(byte alertPin, TwoWire *i2c, bool loud, byte address)
   checkbq(m_I2C->begin(), "%s: failed to init I2C", __func__);
   m_I2C->setTimeOut(2);
   BQConfig::getDefaultConfig(&m_currentConfig);
+  m_defaultConfigCRC = m_currentConfig.CRC32();
   check(!m_configDownload(&m_currentConfig), "%s(address=0x%02X): failed to download config", __func__, address);
   return 0;
 
@@ -866,14 +867,6 @@ void bq76952::setDischargingTemperatureMaxLimit(signed int temp, byte sec) {
 }
 #endif
 
-void BQConfig::getDefaultConfig(BQConfig *buf) 
-{
-  /* DEBUG: must be 272 registers (replace with auto-generated from default) */
-  buf->m_registers[0] = BQRegister(0x91E2, (short) 25390, "Int Gain");
-  buf->m_registers[1] = BQRegister(0x91A8, (float) 1e3, "CC Gain");
-  buf->m_registers[2] = BQRegister(0x9341, (byte) 40, "Cell Balance Min Delta (Relax)");
-}
-
 int BQConfig::CRC32(void) const
 {
   uint32_t checksum = UINT32_MAX;
@@ -953,14 +946,14 @@ BQRegister::BQRegister(int address, float val, const char *descr)
   setF32(val);
 }
 
-BQRegister::BQRegister(int address, short val, const char *descr)
+BQRegister::BQRegister(int address, uint16_t val, const char *descr)
 {
   m_descr = descr;
   m_address = (short) address % 0xFFFF;
   setI16(val);
 }
 
-BQRegister::BQRegister(int address, int32_t val, const char *descr)
+BQRegister::BQRegister(int address, uint32_t val, const char *descr)
 {
   m_descr = descr;
   m_address = (short) address % 0xFFFF;
@@ -1010,4 +1003,280 @@ int BQRegister::getAddress(void) const
 const char *BQRegister::getDescription(void) const
 {
   return m_descr;
+}
+
+void BQConfig::getDefaultConfig(BQConfig *out)
+{
+  out->setRegister(  0,	BQRegister(0x9180, (uint16_t) 	 0x00000000));
+	out->setRegister(  1,	BQRegister(0x9182, (uint16_t) 	 0x00000000));
+	out->setRegister(  2,	BQRegister(0x9184, (uint16_t) 	 0x00000000));
+	out->setRegister(  3,	BQRegister(0x9186, (uint16_t) 	 0x00000000));
+	out->setRegister(  4,	BQRegister(0x9188, (uint16_t) 	 0x00000000));
+	out->setRegister(  5,	BQRegister(0x918A, (uint16_t) 	 0x00000000));
+	out->setRegister(  6,	BQRegister(0x918C, (uint16_t) 	 0x00000000));
+	out->setRegister(  7,	BQRegister(0x918E, (uint16_t) 	 0x00000000));
+	out->setRegister(  8,	BQRegister(0x9190, (uint16_t) 	 0x00000000));
+	out->setRegister(  9,	BQRegister(0x9192, (uint16_t) 	 0x00000000));
+	out->setRegister( 10,	BQRegister(0x9194, (uint16_t) 	 0x00000000));
+	out->setRegister( 11,	BQRegister(0x9196, (uint16_t) 	 0x00000000));
+	out->setRegister( 12,	BQRegister(0x9198, (uint16_t) 	 0x00000000));
+	out->setRegister( 13,	BQRegister(0x919A, (uint16_t) 	 0x00000000));
+	out->setRegister( 14,	BQRegister(0x919C, (uint16_t) 	 0x00000000));
+	out->setRegister( 15,	BQRegister(0x919E, (uint16_t) 	 0x00000000));
+	out->setRegister( 16,	BQRegister(0x91A0, (uint16_t) 	 0x00000000));
+	out->setRegister( 17,	BQRegister(0x91A2, (uint16_t) 	 0x00000000));
+	out->setRegister( 18,	BQRegister(0x91A4, (uint16_t) 	 0x00000000));
+	out->setRegister( 19,	BQRegister(0x91A6, (uint16_t) 	 0x00000000));
+	out->setRegister( 20,	BQRegister(0x91A8, (float) 		 7.476800));
+	out->setRegister( 21,	BQRegister(0x91AC, (float) 		 2230042.463000));
+	out->setRegister( 22,	BQRegister(0x91B0, (uint16_t) 	 0x00000000));
+	out->setRegister( 23,	BQRegister(0x91B2, (uint16_t) 	 0x00000000));
+	out->setRegister( 24,	BQRegister(0x91C6, (uint16_t) 	 0x00000040));
+	out->setRegister( 25,	BQRegister(0x91C8, (uint16_t) 	 0x00000000));
+	out->setRegister( 26,	BQRegister(0x91CA, (uint8_t) 	 0x00000000));
+	out->setRegister( 27,	BQRegister(0x91CB, (uint8_t) 	 0x00000000));
+	out->setRegister( 28,	BQRegister(0x91CC, (uint8_t) 	 0x00000000));
+	out->setRegister( 29,	BQRegister(0x91CD, (uint8_t) 	 0x00000000));
+	out->setRegister( 30,	BQRegister(0x91CE, (uint8_t) 	 0x00000000));
+	out->setRegister( 31,	BQRegister(0x91CF, (uint8_t) 	 0x00000000));
+	out->setRegister( 32,	BQRegister(0x91D0, (uint8_t) 	 0x00000000));
+	out->setRegister( 33,	BQRegister(0x91D1, (uint8_t) 	 0x00000000));
+	out->setRegister( 34,	BQRegister(0x91D2, (uint8_t) 	 0x00000000));
+	out->setRegister( 35,	BQRegister(0x91D3, (uint8_t) 	 0x00000000));
+	out->setRegister( 36,	BQRegister(0x91E2, (uint16_t) 	 0x0000632E));
+	out->setRegister( 37,	BQRegister(0x91E4, (uint16_t) 	 0x00000BD8));
+	out->setRegister( 38,	BQRegister(0x91E6, (uint16_t) 	 0x00003FFF));
+	out->setRegister( 39,	BQRegister(0x91E8, (uint16_t) 	 0x000018EB));
+	out->setRegister( 40,	BQRegister(0x91EA, (uint16_t) 	 0xFFFFC35C));
+	out->setRegister( 41,	BQRegister(0x91EC, (uint16_t) 	 0x00006737));
+	out->setRegister( 42,	BQRegister(0x91EE, (uint16_t) 	 0xFFFFA778));
+	out->setRegister( 43,	BQRegister(0x91F0, (uint16_t) 	 0x000070A2));
+	out->setRegister( 44,	BQRegister(0x91F2, (uint16_t) 	 0x000002A0));
+	out->setRegister( 45,	BQRegister(0x91F4, (uint16_t) 	 0xFFFFFE8D));
+	out->setRegister( 46,	BQRegister(0x91F6, (uint16_t) 	 0x000002C4));
+	out->setRegister( 47,	BQRegister(0x91F8, (uint16_t) 	 0xFFFFF256));
+	out->setRegister( 48,	BQRegister(0x91FA, (uint16_t) 	 0x000013BB));
+	out->setRegister( 49,	BQRegister(0x91FE, (uint16_t) 	 0x00002DB7));
+	out->setRegister( 50,	BQRegister(0x9200, (uint16_t) 	 0xFFFFBB97));
+	out->setRegister( 51,	BQRegister(0x9202, (uint16_t) 	 0x0000649F));
+	out->setRegister( 52,	BQRegister(0x9204, (uint16_t) 	 0xFFFFA3D7));
+	out->setRegister( 53,	BQRegister(0x9206, (uint16_t) 	 0x00007DAF));
+	out->setRegister( 54,	BQRegister(0x9208, (uint16_t) 	 0x0000082A));
+	out->setRegister( 55,	BQRegister(0x920A, (uint16_t) 	 0xFFFFF7F9));
+	out->setRegister( 56,	BQRegister(0x920C, (uint16_t) 	 0x00000B8B));
+	out->setRegister( 57,	BQRegister(0x920E, (uint16_t) 	 0xFFFFF29D));
+	out->setRegister( 58,	BQRegister(0x9210, (uint16_t) 	 0x00001121));
+	out->setRegister( 59,	BQRegister(0x9214, (uint16_t) 	 0x0000435E));
+	out->setRegister( 60,	BQRegister(0x9216, (uint16_t) 	 0x00000000));
+	out->setRegister( 61,	BQRegister(0x9218, (uint16_t) 	 0x00000000));
+	out->setRegister( 62,	BQRegister(0x921A, (uint16_t) 	 0x00000000));
+	out->setRegister( 63,	BQRegister(0x921C, (uint16_t) 	 0x00000000));
+	out->setRegister( 64,	BQRegister(0x921E, (uint16_t) 	 0x00000000));
+	out->setRegister( 65,	BQRegister(0x9220, (uint16_t) 	 0x00000000));
+	out->setRegister( 66,	BQRegister(0x9222, (uint16_t) 	 0x00000000));
+	out->setRegister( 67,	BQRegister(0x9224, (uint16_t) 	 0x00000000));
+	out->setRegister( 68,	BQRegister(0x9226, (uint16_t) 	 0x00000000));
+	out->setRegister( 69,	BQRegister(0x9228, (uint16_t) 	 0x00000000));
+	out->setRegister( 70,	BQRegister(0x922A, (uint16_t) 	 0x00000000));
+	out->setRegister( 71,	BQRegister(0x922D, (uint8_t) 	 0x00000009));
+	out->setRegister( 72,	BQRegister(0x91D4, (uint16_t) 	 0x0000FFFF));
+	out->setRegister( 73,	BQRegister(0x91D6, (uint16_t) 	 0x0000FFFF));
+	out->setRegister( 74,	BQRegister(0x9231, (uint16_t) 	 0x000001F4));
+	out->setRegister( 75,	BQRegister(0x9233, (uint8_t) 	 0x0000001E));
+	out->setRegister( 76,	BQRegister(0x9234, (uint16_t) 	 0x00002982));
+	out->setRegister( 77,	BQRegister(0x9236, (uint8_t) 	 0x00000000));
+	out->setRegister( 78,	BQRegister(0x9237, (uint8_t) 	 0x00000000));
+	out->setRegister( 79,	BQRegister(0x9238, (uint8_t) 	 0x00000000));
+	out->setRegister( 80,	BQRegister(0x9239, (uint8_t) 	 0x00000000));
+	out->setRegister( 81,	BQRegister(0x923A, (uint8_t) 	 0x00000000));
+	out->setRegister( 82,	BQRegister(0x923C, (uint8_t) 	 0x00000020));
+	out->setRegister( 83,	BQRegister(0x923D, (uint8_t) 	 0x00000000));
+	out->setRegister( 84,	BQRegister(0x92FA, (uint8_t) 	 0x00000000));
+	out->setRegister( 85,	BQRegister(0x92FB, (uint8_t) 	 0x00000000));
+	out->setRegister( 86,	BQRegister(0x92FC, (uint8_t) 	 0x00000000));
+	out->setRegister( 87,	BQRegister(0x92FD, (uint8_t) 	 0x00000007));
+	out->setRegister( 88,	BQRegister(0x92FE, (uint8_t) 	 0x00000000));
+	out->setRegister( 89,	BQRegister(0x92FF, (uint8_t) 	 0x00000000));
+	out->setRegister( 90,	BQRegister(0x9300, (uint8_t) 	 0x00000000));
+	out->setRegister( 91,	BQRegister(0x9301, (uint8_t) 	 0x00000000));
+	out->setRegister( 92,	BQRegister(0x9302, (uint8_t) 	 0x00000000));
+	out->setRegister( 93,	BQRegister(0x9303, (uint8_t) 	 0x00000005));
+	out->setRegister( 94,	BQRegister(0x9304, (uint16_t) 	 0x00000000));
+	out->setRegister( 95,	BQRegister(0x9307, (uint8_t) 	 0x00000050));
+	out->setRegister( 96,	BQRegister(0x925F, (uint16_t) 	 0x00000002));
+	out->setRegister( 97,	BQRegister(0x9261, (uint8_t) 	 0x00000088));
+	out->setRegister( 98,	BQRegister(0x9262, (uint8_t) 	 0x00000000));
+	out->setRegister( 99,	BQRegister(0x9263, (uint8_t) 	 0x00000000));
+	out->setRegister(100,	BQRegister(0x9265, (uint8_t) 	 0x00000098));
+	out->setRegister(101,	BQRegister(0x9266, (uint8_t) 	 0x000000D5));
+	out->setRegister(102,	BQRegister(0x9267, (uint8_t) 	 0x00000056));
+	out->setRegister(103,	BQRegister(0x9269, (uint8_t) 	 0x000000E4));
+	out->setRegister(104,	BQRegister(0x926A, (uint8_t) 	 0x000000E6));
+	out->setRegister(105,	BQRegister(0x926B, (uint8_t) 	 0x000000E2));
+	out->setRegister(106,	BQRegister(0x9273, (uint16_t) 	 0x00000032));
+	out->setRegister(107,	BQRegister(0x926D, (uint16_t) 	 0x0000F800));
+	out->setRegister(108,	BQRegister(0x926F, (uint8_t) 	 0x000000FC));
+	out->setRegister(109,	BQRegister(0x9270, (uint8_t) 	 0x000000F7));
+	out->setRegister(110,	BQRegister(0x9271, (uint8_t) 	 0x000000F4));
+	out->setRegister(111,	BQRegister(0x92C4, (uint8_t) 	 0x0000005F));
+	out->setRegister(112,	BQRegister(0x92C5, (uint8_t) 	 0x0000009F));
+	out->setRegister(113,	BQRegister(0x92C6, (uint8_t) 	 0x00000000));
+	out->setRegister(114,	BQRegister(0x92C7, (uint8_t) 	 0x00000000));
+	out->setRegister(115,	BQRegister(0x92C0, (uint8_t) 	 0x00000000));
+	out->setRegister(116,	BQRegister(0x92C1, (uint8_t) 	 0x00000000));
+	out->setRegister(117,	BQRegister(0x92C2, (uint8_t) 	 0x00000007));
+	out->setRegister(118,	BQRegister(0x92C3, (uint8_t) 	 0x00000000));
+	out->setRegister(119,	BQRegister(0x9308, (uint8_t) 	 0x0000000D));
+	out->setRegister(120,	BQRegister(0x9309, (uint8_t) 	 0x00000001));
+	out->setRegister(121,	BQRegister(0x930A, (uint16_t) 	 0x00000000));
+	out->setRegister(122,	BQRegister(0x930C, (uint16_t) 	 0x00000000));
+	out->setRegister(123,	BQRegister(0x930E, (uint8_t) 	 0x00000005));
+	out->setRegister(124,	BQRegister(0x930F, (uint8_t) 	 0x00000032));
+	out->setRegister(125,	BQRegister(0x9310, (uint16_t) 	 0x00000064));
+	out->setRegister(126,	BQRegister(0x9312, (uint16_t) 	 0x00000032));
+	out->setRegister(127,	BQRegister(0x9314, (uint8_t) 	 0x00000005));
+	out->setRegister(128,	BQRegister(0x9315, (uint16_t) 	 0x00000000));
+	out->setRegister(129,	BQRegister(0x9317, (uint16_t) 	 0x00000000));
+	out->setRegister(130,	BQRegister(0x9319, (uint16_t) 	 0x00000000));
+	out->setRegister(131,	BQRegister(0x931B, (uint16_t) 	 0x00000000));
+	out->setRegister(132,	BQRegister(0x931D, (uint16_t) 	 0x00000000));
+	out->setRegister(133,	BQRegister(0x931F, (uint16_t) 	 0x00000000));
+	out->setRegister(134,	BQRegister(0x9321, (uint16_t) 	 0x00000000));
+	out->setRegister(135,	BQRegister(0x9323, (uint16_t) 	 0x00000000));
+	out->setRegister(136,	BQRegister(0x9325, (uint16_t) 	 0x00000000));
+	out->setRegister(137,	BQRegister(0x9327, (uint16_t) 	 0x00000000));
+	out->setRegister(138,	BQRegister(0x9329, (uint16_t) 	 0x00000000));
+	out->setRegister(139,	BQRegister(0x932B, (uint16_t) 	 0x00000000));
+	out->setRegister(140,	BQRegister(0x932D, (uint16_t) 	 0x00000000));
+	out->setRegister(141,	BQRegister(0x932F, (uint16_t) 	 0x00000000));
+	out->setRegister(142,	BQRegister(0x9331, (uint16_t) 	 0x00000000));
+	out->setRegister(143,	BQRegister(0x9333, (uint16_t) 	 0x00000000));
+	out->setRegister(144,	BQRegister(0x9343, (uint16_t) 	 0x00000040));
+	out->setRegister(145,	BQRegister(0x9335, (uint8_t) 	 0x00000000));
+	out->setRegister(146,	BQRegister(0x9336, (uint8_t) 	 0xFFFFFFEC));
+	out->setRegister(147,	BQRegister(0x9337, (uint8_t) 	 0x0000003C));
+	out->setRegister(148,	BQRegister(0x9338, (uint8_t) 	 0x00000046));
+	out->setRegister(149,	BQRegister(0x9339, (uint8_t) 	 0x00000014));
+	out->setRegister(150,	BQRegister(0x933A, (uint8_t) 	 0x00000001));
+	out->setRegister(151,	BQRegister(0x933B, (uint16_t) 	 0x00000F3C));
+	out->setRegister(152,	BQRegister(0x933D, (uint8_t) 	 0x00000028));
+	out->setRegister(153,	BQRegister(0x933E, (uint8_t) 	 0x00000014));
+	out->setRegister(154,	BQRegister(0x933F, (uint16_t) 	 0x00000F3C));
+	out->setRegister(155,	BQRegister(0x9341, (uint8_t) 	 0x00000028));
+	out->setRegister(156,	BQRegister(0x9342, (uint8_t) 	 0x00000014));
+	out->setRegister(157,	BQRegister(0x923F, (uint16_t) 	 0x00000000));
+	out->setRegister(158,	BQRegister(0x9241, (uint16_t) 	 0x00000258));
+	out->setRegister(159,	BQRegister(0x9243, (uint8_t) 	 0x00000001));
+	out->setRegister(160,	BQRegister(0x9244, (uint8_t) 	 0x00000055));
+	out->setRegister(161,	BQRegister(0x9245, (uint8_t) 	 0x00000005));
+	out->setRegister(162,	BQRegister(0x9252, (uint8_t) 	 0x00000000));
+	out->setRegister(163,	BQRegister(0x9253, (uint8_t) 	 0x00000000));
+	out->setRegister(164,	BQRegister(0x9254, (uint8_t) 	 0x00000000));
+	out->setRegister(165,	BQRegister(0x9255, (uint8_t) 	 0x00000005));
+	out->setRegister(166,	BQRegister(0x9248, (uint16_t) 	 0x00000014));
+	out->setRegister(167,	BQRegister(0x924A, (uint8_t) 	 0x00000005));
+	out->setRegister(168,	BQRegister(0x924B, (uint16_t) 	 0x000001F4));
+	out->setRegister(169,	BQRegister(0x924D, (uint8_t) 	 0x0000000A));
+	out->setRegister(170,	BQRegister(0x924E, (uint16_t) 	 0x000007D0));
+	out->setRegister(171,	BQRegister(0x9250, (uint16_t) 	 0x000000C8));
+	out->setRegister(172,	BQRegister(0x91E0, (uint16_t) 	 0x00000000));
+	out->setRegister(173,	BQRegister(0x9275, (uint8_t) 	 0x00000032));
+	out->setRegister(174,	BQRegister(0x9276, (uint16_t) 	 0x0000004A));
+	out->setRegister(175,	BQRegister(0x927B, (uint8_t) 	 0x00000002));
+	out->setRegister(176,	BQRegister(0x9278, (uint8_t) 	 0x00000056));
+	out->setRegister(177,	BQRegister(0x9279, (uint16_t) 	 0x0000004A));
+	out->setRegister(178,	BQRegister(0x927C, (uint8_t) 	 0x00000002));
+	out->setRegister(179,	BQRegister(0x927D, (uint8_t) 	 0x00000000));
+	out->setRegister(180,	BQRegister(0x927E, (uint8_t) 	 0x0000000A));
+	out->setRegister(181,	BQRegister(0x927F, (uint8_t) 	 0x0000000F));
+	out->setRegister(182,	BQRegister(0x9280, (uint8_t) 	 0x00000002));
+	out->setRegister(183,	BQRegister(0x9281, (uint8_t) 	 0x00000004));
+	out->setRegister(184,	BQRegister(0x9288, (uint16_t) 	 0xFFFFFF38));
+	out->setRegister(185,	BQRegister(0x92B0, (uint16_t) 	 0x000000C8));
+	out->setRegister(186,	BQRegister(0x9282, (uint8_t) 	 0x00000004));
+	out->setRegister(187,	BQRegister(0x9283, (uint8_t) 	 0x00000001));
+	out->setRegister(188,	BQRegister(0x9284, (uint8_t) 	 0x00000003));
+	out->setRegister(189,	BQRegister(0x9285, (uint8_t) 	 0x00000007));
+	out->setRegister(190,	BQRegister(0x9286, (uint8_t) 	 0x00000000));
+	out->setRegister(191,	BQRegister(0x9287, (uint8_t) 	 0x00000002));
+	out->setRegister(192,	BQRegister(0x9294, (uint8_t) 	 0x00000005));
+	out->setRegister(193,	BQRegister(0x928A, (uint16_t) 	 0xFFFFF060));
+	out->setRegister(194,	BQRegister(0x928C, (uint8_t) 	 0x00000002));
+	out->setRegister(195,	BQRegister(0x928D, (uint16_t) 	 0x000000C8));
+	out->setRegister(196,	BQRegister(0x928F, (uint8_t) 	 0x00000000));
+	out->setRegister(197,	BQRegister(0x9290, (uint8_t) 	 0x0000000A));
+	out->setRegister(198,	BQRegister(0x9291, (uint8_t) 	 0x0000000F));
+	out->setRegister(199,	BQRegister(0x9292, (uint16_t) 	 0x000000C8));
+	out->setRegister(200,	BQRegister(0x9295, (uint8_t) 	 0x00000000));
+	out->setRegister(201,	BQRegister(0x9296, (uint8_t) 	 0x0000000A));
+	out->setRegister(202,	BQRegister(0x9297, (uint8_t) 	 0x0000000F));
+	out->setRegister(203,	BQRegister(0x9298, (uint16_t) 	 0x000000C8));
+	out->setRegister(204,	BQRegister(0x929A, (uint8_t) 	 0x00000037));
+	out->setRegister(205,	BQRegister(0x929B, (uint8_t) 	 0x00000002));
+	out->setRegister(206,	BQRegister(0x929C, (uint8_t) 	 0x00000032));
+	out->setRegister(207,	BQRegister(0x929D, (uint8_t) 	 0x0000003C));
+	out->setRegister(208,	BQRegister(0x929E, (uint8_t) 	 0x00000002));
+	out->setRegister(209,	BQRegister(0x929F, (uint8_t) 	 0x00000037));
+	out->setRegister(210,	BQRegister(0x92A0, (uint8_t) 	 0x00000050));
+	out->setRegister(211,	BQRegister(0x92A1, (uint8_t) 	 0x00000002));
+	out->setRegister(212,	BQRegister(0x92A2, (uint8_t) 	 0x00000041));
+	out->setRegister(213,	BQRegister(0x92A3, (uint8_t) 	 0x00000055));
+	out->setRegister(214,	BQRegister(0x92A4, (uint8_t) 	 0x00000002));
+	out->setRegister(215,	BQRegister(0x92A5, (uint8_t) 	 0x00000050));
+	out->setRegister(216,	BQRegister(0x92A6, (uint8_t) 	 0x00000000));
+	out->setRegister(217,	BQRegister(0x92A7, (uint8_t) 	 0x00000002));
+	out->setRegister(218,	BQRegister(0x92A8, (uint8_t) 	 0x00000005));
+	out->setRegister(219,	BQRegister(0x92A9, (uint8_t) 	 0x00000000));
+	out->setRegister(220,	BQRegister(0x92AA, (uint8_t) 	 0x00000002));
+	out->setRegister(221,	BQRegister(0x92AB, (uint8_t) 	 0x00000005));
+	out->setRegister(222,	BQRegister(0x92AC, (uint8_t) 	 0xFFFFFFEC));
+	out->setRegister(223,	BQRegister(0x92AD, (uint8_t) 	 0x00000002));
+	out->setRegister(224,	BQRegister(0x92AE, (uint8_t) 	 0xFFFFFFF1));
+	out->setRegister(225,	BQRegister(0x92AF, (uint8_t) 	 0x00000003));
+	out->setRegister(226,	BQRegister(0x92B2, (uint16_t) 	 0x0000003C));
+	out->setRegister(227,	BQRegister(0x92B4, (uint8_t) 	 0x00000000));
+	out->setRegister(228,	BQRegister(0x92B5, (uint8_t) 	 0x00000032));
+	out->setRegister(229,	BQRegister(0x92B6, (uint16_t) 	 0x00000001));
+	out->setRegister(230,	BQRegister(0x92BA, (uint16_t) 	 0x000000FA));
+	out->setRegister(231,	BQRegister(0x92BC, (uint16_t) 	 0x00000708));
+	out->setRegister(232,	BQRegister(0x92BE, (uint16_t) 	 0x00000002));
+	out->setRegister(233,	BQRegister(0x92C8, (uint16_t) 	 0x000005DC));
+	out->setRegister(234,	BQRegister(0x92CA, (uint8_t) 	 0x00000002));
+	out->setRegister(235,	BQRegister(0x92CB, (uint16_t) 	 0x00000898));
+	out->setRegister(236,	BQRegister(0x92CD, (uint8_t) 	 0x00000005));
+	out->setRegister(237,	BQRegister(0x92CE, (uint16_t) 	 0x00001194));
+	out->setRegister(238,	BQRegister(0x92D0, (uint8_t) 	 0x00000005));
+	out->setRegister(239,	BQRegister(0x92D1, (uint16_t) 	 0x000001F4));
+	out->setRegister(240,	BQRegister(0x92D3, (uint8_t) 	 0x00000005));
+	out->setRegister(241,	BQRegister(0x92D4, (uint16_t) 	 0x00002710));
+	out->setRegister(242,	BQRegister(0x92D6, (uint8_t) 	 0x00000005));
+	out->setRegister(243,	BQRegister(0x92D7, (uint16_t) 	 0xFFFF8300));
+	out->setRegister(244,	BQRegister(0x92D9, (uint8_t) 	 0x00000005));
+	out->setRegister(245,	BQRegister(0x92DA, (uint8_t) 	 0x00000041));
+	out->setRegister(246,	BQRegister(0x92DB, (uint8_t) 	 0x00000005));
+	out->setRegister(247,	BQRegister(0x92DC, (uint8_t) 	 0x00000055));
+	out->setRegister(248,	BQRegister(0x92DD, (uint8_t) 	 0x00000005));
+	out->setRegister(249,	BQRegister(0x92DE, (uint16_t) 	 0x00000DAC));
+	out->setRegister(250,	BQRegister(0x92E0, (uint16_t) 	 0x0000000A));
+	out->setRegister(251,	BQRegister(0x92E2, (uint16_t) 	 0x000001F4));
+	out->setRegister(252,	BQRegister(0x92E4, (uint8_t) 	 0x00000005));
+	out->setRegister(253,	BQRegister(0x92E5, (uint16_t) 	 0x00000064));
+	out->setRegister(254,	BQRegister(0x92E7, (uint16_t) 	 0x00000E74));
+	out->setRegister(255,	BQRegister(0x92E9, (uint16_t) 	 0x00000032));
+	out->setRegister(256,	BQRegister(0x92EB, (uint16_t) 	 0x000000C8));
+	out->setRegister(257,	BQRegister(0x92ED, (uint8_t) 	 0x00000005));
+	out->setRegister(258,	BQRegister(0x92EE, (uint16_t) 	 0x00000014));
+	out->setRegister(259,	BQRegister(0x92F0, (uint8_t) 	 0x00000005));
+	out->setRegister(260,	BQRegister(0x92F1, (uint16_t) 	 0xFFFFFFEC));
+	out->setRegister(261,	BQRegister(0x92F3, (uint8_t) 	 0x00000005));
+	out->setRegister(262,	BQRegister(0x92F4, (uint16_t) 	 0x00000064));
+	out->setRegister(263,	BQRegister(0x92F6, (uint8_t) 	 0x00000005));
+	out->setRegister(264,	BQRegister(0x92F7, (uint8_t) 	 0x00000005));
+	out->setRegister(265,	BQRegister(0x92F8, (uint8_t) 	 0x00000005));
+	out->setRegister(266,	BQRegister(0x92F9, (uint8_t) 	 0x00000005));
+	out->setRegister(267,	BQRegister(0x9256, (uint8_t) 	 0x00000000));
+	out->setRegister(268,	BQRegister(0x9257, (uint16_t) 	 0x00000414));
+	out->setRegister(269,	BQRegister(0x9259, (uint16_t) 	 0x00003672));
+	out->setRegister(270,	BQRegister(0x925B, (uint16_t) 	 0x0000FFFF));
+	out->setRegister(271,	BQRegister(0x925D, (uint16_t) 	 0x0000FFFF));
 }
