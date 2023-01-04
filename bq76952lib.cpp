@@ -116,7 +116,7 @@ int bq76952::m_directCommandRead(byte command, size_t size, int *o_data)
   uint8_t *puData = (uint8_t *) o_data; 
   *o_data = 0;
   int erc = 0;
-  checkbq(0 < size && size <= 2, "%s: invalid size %lu", __func__, size);
+  checkbq(0 < size && size <= 32, "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(m_I2C_Address);
   checkbq(m_I2C->write(command), "%s: write(0x%02X) failed", __func__, command);
   checkbq(!(erc = m_I2C->endTransmission(true)), "%s: endTransmission unexcepted result %d", __func__, erc);
@@ -501,6 +501,7 @@ int bq76952::configUpload(const BQConfig *config)
   checkbq(!m_exitConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
   message("%s: config upload complete, reading back and verifying", __func__);
   checkbq(!m_configDownload(&m_currentConfig), "%s: configDownload failed", __func__);
+  m_updateUnits();
   checkbq(m_currentConfig.CRC32() == new_checksum, 
         "%s: config readback checksum does not match: sent: 0x%08X, got: 0x%08X",
         __func__, m_currentConfig.CRC32(), new_checksum);
@@ -582,6 +583,7 @@ int bq76952::begin(byte alertPin, TwoWire *i2c, bool loud, byte address)
   BQConfig::getDefaultConfig(&m_currentConfig);
   m_defaultConfigCRC = m_currentConfig.CRC32();
   check(!m_configDownload(&m_currentConfig), "%s(address=0x%02X): failed to download config", __func__, address);
+  m_updateUnits();
   return 0;
 
   error:
@@ -593,77 +595,147 @@ int bq76952::configChecksum(void) const
   return m_currentConfig.CRC32();
 }
 
-#if 0
-// FTX: tested
-bool bq76952::isConnected(void) {
-  Wire.beginTransmission(m_I2C_Address);
-  if(Wire.endTransmission() == 0) {
-    message("[+] BQ76592 -> Connected on I2C");
-    return true;
+int bq76952::reset(void) 
+{
+  check(!m_subCommandWrite(0x0012), "%s: subCommandWrite failed", __func__);
+  vTaskDelay(1000);
+  check(!m_configDownload(&m_currentConfig), "%s: failed to download config", __func__);
+  m_updateUnits();
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::getVoltage(bq76952_voltages channel, float *o_V)
+{
+  check(BQ_VOLTAGE_CELL1 <= channel && channel <= BQ_VOLTAGE_LD && channel % 2 == 0,
+        "%s: invalid channel %d", __func__, channel);
+  uint16_t raw;
+  check(!m_directCommandRead((uint8_t) channel, sizeof(uint16_t), (int *) &raw), 
+        "%s: directCommandRead failed", __func__);
+  if (channel <= BQ_VOLTAGE_CELL16) {
+    return raw / 1e3;
   }
   else {
-    message("[+] BQ76592 -> Not Detected on I2C");
-    return false;
+    return raw * m_userV_volts;
   }
+  return 0;
+
+  error:
+  return -1;
 }
 
-// Reset the BQ chip
-void bq76952::reset(void) {
-  subCommand(0x0012);
-  debugPrintln("[+] Resetting BQ76952...");
-}
+struct raw_voltages {
+	uint16_t cells[16];
+	uint16_t stack, pack, ld;
+} __attribute__((packed));
 
-// FTX: tested
-// Read single cell voltage
-unsigned int bq76952::getCellVoltage(byte cellNumber) {
-  return directCommand(CELL_NO_TO_ADDR(cellNumber));
-}
-
-// Read All cell voltages in given array - Call like readAllCellVoltages(&myArray)
-void bq76952::getAllCellVoltages(unsigned int* cellArray) {
-  for(byte x=1;x<17;x++)
-    cellArray[x] = getCellVoltage(x);
-}
-
-// Measure CC2 current
-unsigned int bq76952::getCurrent(void) {
-  return directCommand(CMD_DIR_CC2_CUR);
-}
-
-// FTX: tested
-// Measure chip temperature in °C
-float bq76952::getInternalTemp(void) {
-  float raw = directCommand(CMD_DIR_INT_TEMP)/10.0;
-  return (raw - 273.15);
-}
-
-// Measure thermistor temperature in °C
-float bq76952::getThermistorTemp(bq76952_thermistor thermistor) {
-  byte cmd;
-  switch(thermistor) {
-    case TS1:
-      cmd = 0x70;
-      break;
-    case TS2:
-      cmd = 0x72;
-      break;
-    case TS3:
-      cmd = 0x74;
-      break;
-    case HDQ:
-      cmd = 0x76;
-      break;
-    case DCHG:
-      cmd = 0x78;
-      break;
-    case DDSG:
-      cmd = 0x7A;
-      break;
+int bq76952::getVoltages(BQVoltages_V *out)
+{
+  raw_voltages raw = {0};
+  check(!m_directCommandRead(BQ_VOLTAGE_CELL1, sizeof(BQVoltages_V), (int *) &raw), 
+        "%s: directCommandRead failed", __func__);
+  for (size_t i = 0; i < BQ_N_CELLS; ++i) {
+    out->cells[i] = raw.cells[i] / 1e3;
   }
-  float raw = directCommand(cmd)/10.0;
-  return (raw - 273.15);
+  out->stack = raw.stack * m_userV_volts;
+  out->pack = raw.pack * m_userV_volts;
+  out->ld = raw.ld * m_userV_volts;
+  return 0;
+
+  error:
+  return -1;
 }
 
+int bq76952::getCC2Current(float *current_amps) 
+{
+  int val = 0;
+  check(!m_directCommandRead(0x3A, 2, &val),  "%s: directCommandRead failed", __func__);
+  *current_amps = m_userA_amps * val;
+  return 0;
+
+  error:
+  return -1;
+}
+
+struct temperatures_raw {
+	uint16_t ts1;
+  uint16_t ts2;
+  uint16_t ts3;
+  uint16_t hdq;
+  uint16_t dchg;
+  uint16_t ddsg;
+} __attribute__((packed));
+
+static float convert_temp(uint16_t raw)
+{
+  return raw / 10.0 - 273.15;
+}
+
+int bq76952::getThermistors(BQTemps_C *out)
+{
+  temperatures_raw raw = {0};
+  check(!m_directCommandRead(BQ_THERMISTOR_TS1, sizeof(temperatures_raw), (int *) &raw), 
+        "%s: directCommandRead failed", __func__);
+  out->ts1 = convert_temp(raw.ts1);
+  out->ts2 = convert_temp(raw.ts2);
+  out->ts3 = convert_temp(raw.ts3);
+  out->hdq = convert_temp(raw.hdq);
+  out->dchg = convert_temp(raw.dchg);
+  out->ddsg = convert_temp(raw.ddsg);
+  return 0;
+
+  error:
+  return -1;
+}
+
+float bq76952::getDieTemp(float *o_intTempC) 
+{
+  int16_t raw = 0;
+  check(!m_directCommandRead(0x68, sizeof(raw), (int *) raw), "%s: directCommandRead failed", __func__);
+  *o_intTempC = convert_temp(raw);
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::getThermistorTemp(bq76952_thermistor thermistor, float *o_tempC) 
+{
+  int16_t raw = 0;
+  check(BQ_THERMISTOR_TS1 <= thermistor && thermistor <= BQ_THERMISTOR_DDSG, 
+        "%s: invalid thermistor channel %d", __func__, thermistor);
+  check(!m_directCommandRead((byte) thermistor, sizeof(raw), (int *) raw), 
+        "%s: directCommandRead failed", __func__);
+  *o_tempC = convert_temp(raw);
+  return 0;
+
+  error:
+  return -1;
+}
+
+void bq76952::m_updateUnits(void)
+{
+  m_userA_amps = m_currentConfig.getUserAScaling();
+  m_userV_volts = m_currentConfig.getUserVScaling();
+}
+
+int bq76952::getPrimaryState(BQPrimaryState *out)
+{
+  byte reg = 0;
+  check(!m_directCommandRead(0x7F, 1, (int *) &reg), "%s: m_directCommandRead failed", __func__);
+  out->charging = reg & (1 << 0);
+  out->discharging = reg & (1 << 2);
+  out->precharging = reg & (1 << 1);
+  out->predischarging = reg & (1 << 3);
+  return 0;
+
+  error:
+  return -1;
+}
+
+#if 0
 // Check Primary Protection status
 bq76952_protection_t bq76952::getProtectionStatus(void) {
   bq76952_protection_t prot;
@@ -713,29 +785,6 @@ void bq76952::setFET(bq76952_fet fet, bq76952_fet_state state) {
   }
   subCommand(subcmd);
 }
-// is Charging FET ON?
-bool bq76952::isCharging(void) {
-  byte regData = (byte)directCommand(CMD_DIR_FET_STAT);
-  if(regData & 0x01) {
-    debugPrintln("[+] Charging FET -> ON");
-    return true;
-  }
-  debugPrintln("[+] Charging FET -> OFF");
-  return false;
-}
-
-// is Discharging FET ON?
-bool bq76952::isDischarging(void) {
-  byte regData = (byte)directCommand(CMD_DIR_FET_STAT);
-  if(regData & 0x04) {
-    debugPrintln("[+] Discharging FET -> ON");
-    return true;
-  }
-  debugPrintln("[+] Discharging FET -> OFF");
-  return false;
-}
-
-
 
 // Set user-defined overvoltage protection
 void bq76952::setCellOvervoltageProtection(unsigned int mv, unsigned int ms) {
@@ -1003,6 +1052,43 @@ int BQRegister::getAddress(void) const
 const char *BQRegister::getDescription(void) const
 {
   return m_descr;
+}
+
+float BQConfig::getUserAScaling(void) const
+{
+  for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    if (0x9303 == this->m_registers[i].m_address) {
+      int config = 0x3 & this->m_registers[i].m_value[0];
+      switch (config) {
+      default:
+      case 0:
+        return 1e-4;
+      case 1:
+        return 1e-3;
+      case 2:
+        return 1e-2;
+      case 3:
+        return 1e-1;
+      }
+    }
+  }
+  check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
+}
+
+float BQConfig::getUserVScaling(void) const
+{
+  for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    if (0x9303 == this->m_registers[i].m_address) {
+      int config = (1 << 2) & this->m_registers[i].m_value[0];
+      if (config) {
+        return 1e-2;
+      }
+      else {
+        return 1e-3;
+      }
+    }
+  }
+  check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
 }
 
 void BQConfig::getDefaultConfig(BQConfig *out)

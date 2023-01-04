@@ -16,12 +16,51 @@
 #include <Wire.h>
 
 enum bq76952_thermistor {
-	TS1,
-	TS2,
-	TS3,
-	HDQ,
-	DCHG,
-	DDSG
+	BQ_THERMISTOR_TS1 = 0x70,
+	BQ_THERMISTOR_TS2 = 0x72,
+	BQ_THERMISTOR_TS3 = 0x74,
+	BQ_THERMISTOR_HDQ = 0x76,
+	BQ_THERMISTOR_DCHG = 0x78,
+	BQ_THERMISTOR_DDSG = 0x7A
+};
+
+struct BQTemps_C {
+	float 	ts1,
+			ts2,
+			ts3,
+			hdq,
+			dchg,
+			ddsg;
+};
+
+#define BQ_N_CELLS 16
+
+enum bq76952_voltages {
+	BQ_VOLTAGE_CELL1 = 0x14,
+	BQ_VOLTAGE_CELL2 = 0x16,
+	BQ_VOLTAGE_CELL3 = 0x18,
+	BQ_VOLTAGE_CELL4 = 0x1A,
+	BQ_VOLTAGE_CELL5 = 0x1C,
+	BQ_VOLTAGE_CELL6 = 0x1E,
+	BQ_VOLTAGE_CELL7 = 0x20,
+
+	BQ_VOLTAGE_CELL8 = 0x22,
+	BQ_VOLTAGE_CELL9 = 0x24,
+	BQ_VOLTAGE_CELL10 = 0x26,
+	BQ_VOLTAGE_CELL11 = 0x28,
+	BQ_VOLTAGE_CELL12 = 0x30,
+	BQ_VOLTAGE_CELL13 = 0x2C,
+	BQ_VOLTAGE_CELL14 = 0x2E,
+	BQ_VOLTAGE_CELL15 = 0x30,
+	BQ_VOLTAGE_CELL16 = 0x32,
+	BQ_VOLTAGE_STACK = 0x34,	
+	BQ_VOLTAGE_PACK = 0x36,
+	BQ_VOLTAGE_LD = 0x38
+};
+
+struct BQVoltages_V {
+	float cells[16];
+	float stack, pack, ld;
 };
 
 enum bq76952_fet {
@@ -77,6 +116,13 @@ typedef union temperatureProtection {
 	} bits;
 } bq76952_temperature_t;
 
+struct BQPrimaryState {
+	bool charging;
+	bool precharging;
+	bool discharging;
+	bool predischarging;
+};
+
 class BQConfig;
 
 class BQRegister {
@@ -121,6 +167,8 @@ public:
 	static void getDefaultConfig(BQConfig *buf);
 	void setRegister(size_t i, const BQRegister &reg);
 	int CRC32(void) const;
+	float getUserAScaling(void) const;
+	float getUserVScaling(void) const;
 };
 
 #define BQ_I2C_DEFAULT_ADDRESS        0x08
@@ -135,6 +183,8 @@ private:
 	byte m_RAMAccessBuffer[32];
 	BQConfig m_currentConfig;
 	int m_defaultConfigCRC;
+	float m_userA_amps;				/* How many amperes are in one unit of 'userA' registers? */
+	float m_userV_volts;			/* How many volts in one unit of 'userV' registers? */
 
 	int m_writeBulkAddress(int command, size_t size);
 	int m_bulkWrite(int address, int size, byte *data);
@@ -158,30 +208,50 @@ private:
 
 	int m_enterConfigUpdate(void);
 	int m_exitConfigUpdate(void);
-
 	int m_configDownload(BQConfig *buffer);
+
+	void m_updateUnits(void);
 
 public:
 	bq76952() = default;
+
+	/* Init */
 	int begin(byte alertPin, TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
-	int configUpload(const BQConfig *config);
-	int configChecksum(void) const;
 	
+	/* Upload config */
+	int configUpload(const BQConfig *config);
+	
+	/* Last config's checksum */
+	int configChecksum(void) const;
 
+	/* Send a reset command (this will reset the configuration to OTP) */
+	int reset(void);
+	
+	/* Read primary current */
+	int getCC2Current(float *out_A);
+	
+	/* Get voltage on channel */
+	int getVoltage(bq76952_voltages channel, float *o_V);
+	
+	/* Get all voltages -- faster than reading one by one */
+	int getVoltages(BQVoltages_V *out);			
+	
+	/* Get thermistor value */
+	int getThermistorTemp(bq76952_thermistor thermistor, float *o_tempC);
 
-	void reset(void);
-	bool isConnected(void);
-	unsigned int getCellVoltage(byte cellNumber);
-	void getAllCellVoltages(unsigned int* cellArray);
-	unsigned int getCurrent(void);
-	float getInternalTemp(void);
-	float getThermistorTemp(bq76952_thermistor);
+	/* Get all thermistors -- faster than reading one by one */
+	int getThermistors(BQTemps_C *out);
+
+	/* Get chip die temp */
+	float getDieTemp(float *o_intTempC);
+
+	/* Primary FET state */
+	int getPrimaryState(BQPrimaryState *out);
+
+	/* FTX: not tested */	
 	bq76952_protection_t getProtectionStatus(void);
 	bq76952_temperature_t getTemperatureStatus(void);
 	void setFET(bq76952_fet, bq76952_fet_state);
-	bool isDischarging(void);
-	bool isCharging(void);
-
 	void setCellOvervoltageProtection(unsigned int, unsigned int);
 	void setCellUndervoltageProtection(unsigned int, unsigned int);
 	void setChargingOvercurrentProtection(byte, byte);
