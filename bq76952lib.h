@@ -59,7 +59,7 @@ enum bq76952_voltages {
 };
 
 struct BQVoltages_V {
-	float cells[16];
+	float cells[BQ_N_CELLS];
 	float stack, pack, ld;
 };
 
@@ -171,7 +171,125 @@ public:
 	float getUserVScaling(void) const;
 };
 
-#define BQ_I2C_DEFAULT_ADDRESS        0x08
+#define BQ_ALERT_ENC(reg, bit) (reg << 8 | bit)
+
+enum BQSafety {
+	/* Safety Alert A */
+	BQSafety_A_SCD		= BQ_ALERT_ENC(0x02, 7),
+	BQSafety_A_OCD2		= BQ_ALERT_ENC(0x02, 6),
+	BQSafety_A_OCD1		= BQ_ALERT_ENC(0x02, 5),
+	BQSafety_A_OCC		= BQ_ALERT_ENC(0x02, 4),
+	BQSafety_A_COV		= BQ_ALERT_ENC(0x02, 3),
+	BQSafety_A_CUV		= BQ_ALERT_ENC(0x02, 2),
+
+	/* Safety Status A */
+	BQSafety_F_SCD		= BQ_ALERT_ENC(0x03, 7),
+	BQSafety_F_OCD2		= BQ_ALERT_ENC(0x03, 6),
+	BQSafety_F_OCD1		= BQ_ALERT_ENC(0x03, 5),
+	BQSafety_F_OCC		= BQ_ALERT_ENC(0x03, 4),
+	BQSafety_F_COV		= BQ_ALERT_ENC(0x03, 3),
+	BQSafety_F_CUV		= BQ_ALERT_ENC(0x03, 2),
+
+	/* Safety Alert B */
+	BQSafety_A_OTF		= BQ_ALERT_ENC(0x04, 7),
+	BQSafety_A_OTINT		= BQ_ALERT_ENC(0x04, 6),
+	BQSafety_A_OTD		= BQ_ALERT_ENC(0x04, 5),
+	BQSafety_A_OTC		= BQ_ALERT_ENC(0x04, 4),
+	BQSafety_A_UTINT		= BQ_ALERT_ENC(0x04, 2),
+	BQSafety_A_UTD		= BQ_ALERT_ENC(0x04, 1),
+	BQSafety_A_UTC		= BQ_ALERT_ENC(0x04, 0),
+
+	/* Safety Status B */
+	BQSafety_F_OTF		= BQ_ALERT_ENC(0x05, 7),
+	BQSafety_F_OTINT		= BQ_ALERT_ENC(0x05, 6),
+	BQSafety_F_OTD		= BQ_ALERT_ENC(0x05, 5),
+	BQSafety_F_OTC		= BQ_ALERT_ENC(0x05, 4),
+	BQSafety_F_UTINT		= BQ_ALERT_ENC(0x05, 2),
+	BQSafety_F_UTD		= BQ_ALERT_ENC(0x05, 1),
+	BQSafety_F_UTC		= BQ_ALERT_ENC(0x05, 0),
+	
+	/* Safety Alert C */
+	BQSafety_A_OCD3		= BQ_ALERT_ENC(0x06, 7),
+	BQSafety_A_SCDL		= BQ_ALERT_ENC(0x06, 6),
+	BQSafety_A_OCDL		= BQ_ALERT_ENC(0x06, 5),
+	BQSafety_A_COVL		= BQ_ALERT_ENC(0x06, 4),
+	BQSafety_A_PTOS		= BQ_ALERT_ENC(0x06, 3),
+
+	/* Safety Status C */
+	BQSafety_F_OCD3	= BQ_ALERT_ENC(0x07, 7),
+	BQSafety_F_SCDL	= BQ_ALERT_ENC(0x07, 6),
+	BQSafety_F_OCDL	= BQ_ALERT_ENC(0x07, 5),
+	BQSafety_F_COVL	= BQ_ALERT_ENC(0x07, 4),
+	BQSafety_F_PTOS	= BQ_ALERT_ENC(0x07, 3),
+
+	/* PF Alert A */
+	BQSafety_A_CUDEP	= BQ_ALERT_ENC(0x0A, 7),
+	BQSafety_A_SOTF		= BQ_ALERT_ENC(0x0A, 6),
+	BQSafety_A_SOT		= BQ_ALERT_ENC(0x0A, 4),
+	BQSafety_A_SOCD		= BQ_ALERT_ENC(0x0A, 3),
+	BQSafety_A_SOCC		= BQ_ALERT_ENC(0x0A, 2),
+	BQSafety_A_SOV		= BQ_ALERT_ENC(0x0A, 1),
+	BQSafety_A_SUV		= BQ_ALERT_ENC(0x0A, 0),
+	
+	/* PF Status A */
+	BQSafety_F_CUDEP	= BQ_ALERT_ENC(0x0B, 7),
+	BQSafety_F_SOTF	= BQ_ALERT_ENC(0x0B, 6),
+	BQSafety_F_SOT	= BQ_ALERT_ENC(0x0B, 4),
+	BQSafety_F_SOCD	= BQ_ALERT_ENC(0x0B, 3),
+	BQSafety_F_SOCC	= BQ_ALERT_ENC(0x0B, 2),
+	BQSafety_F_SOV	= BQ_ALERT_ENC(0x0B, 1),
+	BQSafety_F_SUV	= BQ_ALERT_ENC(0x0B, 0),
+
+	/* PF Alert B */
+	BQSafety_A_SCDL_PF	= BQ_ALERT_ENC(0x0C, 7),
+	BQSafety_A_VIMA		= BQ_ALERT_ENC(0x0C, 4),
+	BQSafety_A_VIMR		= BQ_ALERT_ENC(0x0C, 3),
+	BQSafety_A_2LVL		= BQ_ALERT_ENC(0x0C, 2),
+	BQSafety_A_DFETF	= BQ_ALERT_ENC(0x0C, 1),
+	BQSafety_A_CFETF	= BQ_ALERT_ENC(0x0C, 0),
+
+	/* PF Status B */
+	BQSafety_F_SCDL_PF	= BQ_ALERT_ENC(0x0D, 7),
+	BQSafety_F_VIMA		= BQ_ALERT_ENC(0x0D, 4),
+	BQSafety_F_VIMR		= BQ_ALERT_ENC(0x0D, 3),
+	BQSafety_F_2LVL		= BQ_ALERT_ENC(0x0D, 2),
+	BQSafety_F_DFETF	= BQ_ALERT_ENC(0x0D, 1),
+	BQSafety_F_CFETF	= BQ_ALERT_ENC(0x0D, 0),
+
+	/* PF Alert C */
+	BQSafety_A_HWMX		= BQ_ALERT_ENC(0x0E, 6),
+	BQSafety_A_VSSF		= BQ_ALERT_ENC(0x0E, 5),
+	BQSafety_A_VREF		= BQ_ALERT_ENC(0x0E, 4),
+	BQSafety_A_LFOF		= BQ_ALERT_ENC(0x0E, 3),
+
+	/* PF Status C */
+	BQSafety_F_HWMX		= BQ_ALERT_ENC(0x0F, 6),
+	BQSafety_F_VSSF		= BQ_ALERT_ENC(0x0F, 5),
+	BQSafety_F_VREF		= BQ_ALERT_ENC(0x0F, 4),
+	BQSafety_F_LFOF		= BQ_ALERT_ENC(0x0F, 3),
+
+	/* PF Alert D */
+	BQSafety_A_TOSF		= BQ_ALERT_ENC(0x10, 0),
+
+	/* PF Status D */
+	BQSafety_F_TOSF		= BQ_ALERT_ENC(0x11, 0)
+};
+
+#define BQ_N_ALERTS 36
+
+extern BQSafety const BQ_ALERT_ITERABLE[BQ_N_ALERTS];
+extern BQSafety const BQ_FAULT_ITERABLE[BQ_N_ALERTS];
+
+class BQSafetyState {
+	friend class bq76952;
+	byte m_registerBlock[14];
+	bool m_readSafetyVal(int reg, int bit) const;
+public:
+	bool getSafetyFlag(BQSafety flag) const;
+	static const char *safetyFlagToString(BQSafety flag);
+};
+
+#define BQ_I2C_DEFAULT_ADDRESS 0x08
 
 class bq76952 {
 private:
@@ -227,7 +345,7 @@ public:
 	/* Send a reset command (this will reset the configuration to OTP) */
 	int reset(void);
 	
-	/* Read primary current */
+	/* Get primary current */
 	int getCC2Current(float *out_A);
 	
 	/* Get voltage on channel */
@@ -243,20 +361,20 @@ public:
 	int getThermistors(BQTemps_C *out);
 
 	/* Get chip die temp */
-	float getDieTemp(float *o_intTempC);
+	int getDieTemp(float *o_intTempC);
 
-	/* Primary FET state */
+	/* Get primary (FETs) state */
 	int getPrimaryState(BQPrimaryState *out);
 
-	/* FTX: not tested */	
-	bq76952_protection_t getProtectionStatus(void);
-	bq76952_temperature_t getTemperatureStatus(void);
-	void setFET(bq76952_fet, bq76952_fet_state);
-	void setCellOvervoltageProtection(unsigned int, unsigned int);
-	void setCellUndervoltageProtection(unsigned int, unsigned int);
-	void setChargingOvercurrentProtection(byte, byte);
-	void setChargingTemperatureMaxLimit(signed int, byte);
-	void setDischargingOvercurrentProtection(byte, byte);
-	void setDischargingShortcircuitProtection(bq76952_scd_thresh, unsigned int);
-	void setDischargingTemperatureMaxLimit(signed int, byte);
+	/* Get current safety state */
+	int getSafetyState(BQSafetyState *ss);
+
+	/* Enable/disable discharging. */
+	int enableDischarging(bool en);
+
+	/* Enable/disable charging. */
+	int enableCharging(bool en);
+
+	/* Set message level */
+	void setLoudness(bool loudness);
 };

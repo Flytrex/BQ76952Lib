@@ -114,7 +114,7 @@ int bq76952::m_directCommandRead(byte command, size_t size, int *o_data)
 {
   /* Transmit address+w, command adresss, repeated start, address+r, read data. */
   uint8_t *puData = (uint8_t *) o_data; 
-  *o_data = 0;
+  memset(puData, 0, size);
   int erc = 0;
   checkbq(0 < size && size <= 32, "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(m_I2C_Address);
@@ -126,7 +126,10 @@ int bq76952::m_directCommandRead(byte command, size_t size, int *o_data)
     puData[i] = m_I2C->read();
   }
   if (m_loud) {
-    message("%s(command=0x%02X, size=%d) -> 0x%08X", __func__, command, size, *o_data);
+    message("%s(command=0x%02X, size=%d) -> [%08X %08X %08X %08X %08X %08X %08X %08X]", 
+                                            __func__, command, size, 
+                                            o_data[0], o_data[1], o_data[2], o_data[3], 
+                                            o_data[4], o_data[5], o_data[6], o_data[7]);
   }
   return 0;
 
@@ -690,10 +693,10 @@ int bq76952::getThermistors(BQTemps_C *out)
   return -1;
 }
 
-float bq76952::getDieTemp(float *o_intTempC) 
+int bq76952::getDieTemp(float *o_intTempC) 
 {
-  int16_t raw = 0;
-  check(!m_directCommandRead(0x68, sizeof(raw), (int *) raw), "%s: directCommandRead failed", __func__);
+  int raw = 0;
+  check(!m_directCommandRead(0x68, sizeof(uint16_t), (int *) raw), "%s: directCommandRead failed", __func__);
   *o_intTempC = convert_temp(raw);
   return 0;
 
@@ -703,10 +706,10 @@ float bq76952::getDieTemp(float *o_intTempC)
 
 int bq76952::getThermistorTemp(bq76952_thermistor thermistor, float *o_tempC) 
 {
-  int16_t raw = 0;
+  int raw = 0;
   check(BQ_THERMISTOR_TS1 <= thermistor && thermistor <= BQ_THERMISTOR_DDSG, 
         "%s: invalid thermistor channel %d", __func__, thermistor);
-  check(!m_directCommandRead((byte) thermistor, sizeof(raw), (int *) raw), 
+  check(!m_directCommandRead((byte) thermistor, sizeof(uint16_t), (int *) raw), 
         "%s: directCommandRead failed", __func__);
   *o_tempC = convert_temp(raw);
   return 0;
@@ -735,186 +738,93 @@ int bq76952::getPrimaryState(BQPrimaryState *out)
   return -1;
 }
 
-#if 0
-// Check Primary Protection status
-bq76952_protection_t bq76952::getProtectionStatus(void) {
-  bq76952_protection_t prot;
-  byte regData = (byte)directCommand(CMD_DIR_FPROTEC);
-  prot.bits.SC_DCHG = bitRead(regData, BIT_SA_SC_DCHG);
-  prot.bits.OC2_DCHG = bitRead(regData, BIT_SA_OC2_DCHG);
-  prot.bits.OC1_DCHG = bitRead(regData, BIT_SA_OC1_DCHG);
-  prot.bits.OC_CHG = bitRead(regData, BIT_SA_OC_CHG);
-  prot.bits.CELL_OV = bitRead(regData, BIT_SA_CELL_OV);
-  prot.bits.CELL_UV = bitRead(regData, BIT_SA_CELL_UV);
-  return prot;
+int bq76952::getSafetyState(BQSafetyState *ss)
+{
+  check(!m_directCommandRead(0x02, 6, (int *) (ss->m_registerBlock)), "%s: directCommandRead failed", __func__);
+  check(!m_directCommandRead(0x0A, 8, (int *) (ss->m_registerBlock + 6)), "%s: directCommandRead failed", __func__);
+
+  return 0;
+
+  error:
+  return -1;
 }
 
-// Check Temperature Protection status
-bq76952_temperature_t bq76952::getTemperatureStatus(void) {
-  bq76952_temperature_t prot;
-  byte regData = (byte)directCommand(CMD_DIR_FTEMP);
-  prot.bits.OVERTEMP_FET = bitRead(regData, BIT_SB_OTC);
-  prot.bits.OVERTEMP_INTERNAL = bitRead(regData, BIT_SB_OTINT);
-  prot.bits.OVERTEMP_DCHG = bitRead(regData, BIT_SB_OTD);
-  prot.bits.OVERTEMP_CHG = bitRead(regData, BIT_SB_OTC);
-  prot.bits.UNDERTEMP_INTERNAL = bitRead(regData, BIT_SB_UTINT);
-  prot.bits.UNDERTEMP_DCHG = bitRead(regData, BIT_SB_UTD);
-  prot.bits.UNDERTEMP_CHG = bitRead(regData, BIT_SB_UTC);
-  return prot;
+void bq76952::setLoudness(bool loud)
+{
+  m_loud = loud;
 }
 
-void bq76952::setFET(bq76952_fet fet, bq76952_fet_state state) {
-  unsigned int subcmd;
-  switch(state) {
-    case OFF:
-      switch(fet) {
-        case DCHG:
-          subcmd = 0x0093;
-          break;
-        case CHG:
-          subcmd = 0x0094;
-          break;
-        default:
-          subcmd = 0x0095;
-          break;
-      }
-      break;
-    case ON:
-      subcmd = 0x0096;
-      break;
-  }
-  subCommand(subcmd);
+#define SAFETY_REG(x) (x >> 8)
+#define SAFETY_BIT(x) (x & 0xF)
+
+bool BQSafetyState::getSafetyFlag(BQSafety flag) const
+{
+  return m_readSafetyVal(SAFETY_REG(flag), SAFETY_BIT(flag)) > 0;
 }
 
-// Set user-defined overvoltage protection
-void bq76952::setCellOvervoltageProtection(unsigned int mv, unsigned int ms) {
-  byte thresh = (byte)mv/50.6;
-  uint16_t dly = (uint16_t)(ms/3.3)-2;
-  if(thresh < 20 || thresh > 110)
-    thresh = 86;
-  else {
-    debugPrint("[+] COV Threshold => ");
-    debugPrintlnCmd(thresh);
-    writeDataMemory(0x9278, thresh, 1);
+#define SF_BLOCK0_START SAFETY_REG(BQSafety_A_SCD)
+#define SF_BLOCK1_START SAFETY_REG(BQSafety_A_CUDEP)
+
+bool BQSafetyState::m_readSafetyVal(int reg, int bit) const
+{
+  check_fatal(SAFETY_REG(BQSafety_A_SCD) <= reg && reg <= SAFETY_REG(BQSafety_F_TOSF), 
+            "%s: register 0x%02X out of bounds [0x%02X, 0x%02X]",
+             __func__, reg, SAFETY_REG(BQSafety_A_SCD), SAFETY_REG(BQSafety_F_TOSF));
+  check_fatal(0 <= bit && bit < 8, "%s: bit number %d out of bounds", __func__, bit);
+  size_t index = 0;
+  if (reg >= SF_BLOCK1_START) {
+    index = 6 + reg - SF_BLOCK1_START;
   }
-  if(dly < 1 || dly > 2047)
-    dly = 74;
   else {
-    debugPrint("[+] COV Delay => ");
-    debugPrintlnCmd(dly);
-    writeDataMemory(0x9279, dly, 2);
+    index = reg - SF_BLOCK0_START;
   }
+  return (m_registerBlock[index] & (1 << bit));
 }
 
-// Set user-defined undervoltage protection
-void bq76952::setCellUndervoltageProtection(unsigned int mv, unsigned int ms) {
-  byte thresh = (byte)mv/50.6;
-  uint16_t dly = (uint16_t)(ms/3.3)-2;
-  if(thresh < 20 || thresh > 90)
-    thresh = 50;
-  else {
-    debugPrint("[+] CUV Threshold => ");
-    debugPrintlnCmd(thresh);
-    writeDataMemory(0x9275, thresh, 1);
-  }
-  if(dly < 1 || dly > 2047)
-    dly = 74;
-  else {
-    debugPrint("[+] CUV Delay => ");
-    debugPrintlnCmd(dly);
-    writeDataMemory(0x9276, dly, 2);
-  }
-}
+ BQSafety const BQ_ALERT_ITERABLE[BQ_N_ALERTS] = {
+	BQSafety_A_SCD, BQSafety_A_OCD2, BQSafety_A_OCD1, BQSafety_A_OCC, BQSafety_A_COV, BQSafety_A_CUV,
+	BQSafety_A_OTF, BQSafety_A_OTINT, BQSafety_A_OTD, BQSafety_A_OTC, BQSafety_A_UTINT, BQSafety_A_UTD, BQSafety_A_UTC,
+	BQSafety_A_OCD3, BQSafety_A_SCDL, BQSafety_A_OCDL, BQSafety_A_COVL, BQSafety_A_PTOS,
+	BQSafety_A_CUDEP, BQSafety_A_SOTF, BQSafety_A_SOT, BQSafety_A_SOCD, BQSafety_A_SOCC, BQSafety_A_SOV, BQSafety_A_SUV,
+	BQSafety_A_SCDL_PF, BQSafety_A_VIMA, BQSafety_A_VIMR, BQSafety_A_2LVL, BQSafety_A_DFETF, BQSafety_A_CFETF,
+	BQSafety_A_HWMX, BQSafety_A_VSSF, BQSafety_A_VREF, BQSafety_A_LFOF,
+	BQSafety_A_TOSF
+};
 
-// Set user-defined charging current protection
-void bq76952::setChargingOvercurrentProtection(byte mv, byte ms) {
-  byte thresh = (byte)mv/2;
-  byte dly = (byte)(ms/3.3)-2;
-  if(thresh < 2 || thresh > 62)
-    thresh = 2;
-  else {
-    debugPrint("[+] OCC Threshold => ");
-    debugPrintlnCmd(thresh);
-    writeDataMemory(0x9280, thresh, 1);
-  }
-  if(dly < 1 || dly > 127)
-    dly = 4;
-  else {
-    debugPrint("[+] OCC Delay => ");
-    debugPrintlnCmd(dly);
-    writeDataMemory(0x9281, dly, 1);
-  }
-}
+ BQSafety const BQ_FAULT_ITERABLE[BQ_N_ALERTS] = {
+	BQSafety_F_SCD, BQSafety_F_OCD2, BQSafety_F_OCD1, BQSafety_F_OCC, BQSafety_F_COV, BQSafety_F_CUV,
+	BQSafety_F_OTF, BQSafety_F_OTINT, BQSafety_F_OTD, BQSafety_F_OTC, BQSafety_F_UTINT, BQSafety_F_UTD, BQSafety_F_UTC,
+	BQSafety_F_OCD3, BQSafety_F_SCDL, BQSafety_F_OCDL, BQSafety_F_COVL, BQSafety_F_PTOS,
+	BQSafety_F_CUDEP, BQSafety_F_SOTF, BQSafety_F_SOT, BQSafety_F_SOCD, BQSafety_F_SOCC, BQSafety_F_SOV, BQSafety_F_SUV,
+	BQSafety_F_SCDL_PF, BQSafety_F_VIMA, BQSafety_F_VIMR, BQSafety_F_2LVL, BQSafety_F_DFETF, BQSafety_F_CFETF,
+	BQSafety_F_HWMX, BQSafety_F_VSSF, BQSafety_F_VREF, BQSafety_F_LFOF,
+	BQSafety_F_TOSF
+};
 
-// Set user-defined discharging current protection
-void bq76952::setDischargingOvercurrentProtection(byte mv, byte ms) {
-  byte thresh = (byte)mv/2;
-  byte dly = (byte)(ms/3.3)-2;
-  if(thresh < 2 || thresh > 100)
-    thresh = 2;
-  else {
-    debugPrint("[+] OCD Threshold => ");
-    debugPrintlnCmd(thresh);
-    writeDataMemory(0x9282, thresh, 1);
-  }
-  if(dly < 1 || dly > 127)
-    dly = 1;
-  else {
-    debugPrint("[+] OCD Delay => ");
-    debugPrintlnCmd(dly);
-    writeDataMemory(0x9283, dly, 1);
-  }
-}
-
-// Set user-defined discharging current protection
-void bq76952::setDischargingShortcircuitProtection(bq76952_scd_thresh thresh, unsigned int us) {
-  byte dly = (byte)(us/15)+1;
-  debugPrint("[+] SCD Threshold => ");
-  debugPrintlnCmd(thresh);
-  writeDataMemory(0x9286, thresh, 1);
-  if(dly < 1 || dly > 31)
-    dly = 2;
-  else {
-    debugPrint("[+] SCD Delay (uS) => ");
-    debugPrintlnCmd(dly);
-    writeDataMemory(0x9287, dly, 1);
+const char *BQSafetyState::safetyFlagToString(BQSafety flag)
+{
+  switch (flag) {
+  case BQSafety_A_SCD:  case BQSafety_F_SCD:    return "SCD";   case BQSafety_A_OCD2:   case BQSafety_F_OCD2:   return "OCD2";
+  case BQSafety_A_OCD1: case BQSafety_F_OCD1:   return "OCD1";  case BQSafety_A_OCC:    case BQSafety_F_OCC:    return "OCC";
+  case BQSafety_A_COV:  case BQSafety_F_COV:    return "COV";   case BQSafety_A_CUV:    case BQSafety_F_CUV:    return "CUV";
+  case BQSafety_A_OTF:  case BQSafety_F_OTF:    return "OTF";   case BQSafety_A_OTINT:  case BQSafety_F_OTINT:  return "OTINT"; 
+  case BQSafety_A_OTD:  case BQSafety_F_OTD:    return "OTD";   case BQSafety_A_OTC:    case BQSafety_F_OTC:    return "OTC"; 
+  case BQSafety_A_UTINT: case BQSafety_F_UTINT: return "UTINT"; case BQSafety_A_UTD:    case BQSafety_F_UTD:    return "UTD";
+  case BQSafety_A_UTC:  case BQSafety_F_UTC:    return "UTC";   case BQSafety_A_OCD3:   case BQSafety_F_OCD3:   return "OCD3";
+  case BQSafety_A_SCDL: case BQSafety_F_SCDL:   return "SCDL";  case BQSafety_A_OCDL:   case BQSafety_F_OCDL:   return "OCDL";
+  case BQSafety_A_COVL: case BQSafety_F_COVL:   return "COVL";  case BQSafety_A_PTOS:   case BQSafety_F_PTOS:   return "PTOS";
+  case BQSafety_A_CUDEP: case BQSafety_F_CUDEP: return "CUDEP"; case BQSafety_A_SOTF:   case BQSafety_F_SOTF:   return "SOTF";
+  case BQSafety_A_SOT:  case BQSafety_F_SOT:    return "SOT";   case BQSafety_A_SOCD:   case BQSafety_F_SOCD:   return "SOCD";
+  case BQSafety_A_SOCC: case BQSafety_F_SOCC:   return "SOCC";  case BQSafety_A_SOV:    case BQSafety_F_SOV:    return "SOV";
+  case BQSafety_A_SUV: case BQSafety_F_SUV:     return "SUV";   case BQSafety_A_SCDL_PF: case BQSafety_F_SCDL_PF: return "PF";
+  case BQSafety_A_VIMA: case BQSafety_F_VIMA:   return "VIMA";  case BQSafety_A_VIMR:   case BQSafety_F_VIMR:    return "VIMR";
+  case BQSafety_A_2LVL: case BQSafety_F_2LVL:   return "2LVL";  case BQSafety_A_DFETF:  case BQSafety_F_DFETF:   return "DFETF";
+  case BQSafety_A_CFETF: case BQSafety_F_CFETF: return "CFETF"; case BQSafety_A_HWMX:   case BQSafety_F_HWMX:    return "HWMX";
+  case BQSafety_A_VSSF: case BQSafety_F_VSSF:   return "VSSF";  case BQSafety_A_VREF:   case BQSafety_F_VREF:    return "VREF";
+  case BQSafety_A_LFOF: case BQSafety_F_LFOF:   return "LFOF";  case BQSafety_A_TOSF:   case BQSafety_F_TOSF:    return "TOSF";
+  default: return "INVALID";
   }
 }
-
-// Set user-defined charging over temperature protection
-void bq76952::setChargingTemperatureMaxLimit(signed int temp, byte sec) {
-  if(temp < -40 || temp > 120)
-    temp = 55;
-  else {
-    debugPrint("[+] OTC Threshold => ");
-    debugPrintlnCmd(temp);
-    writeDataMemory(0x929A, temp, 1);
-  }
-  if(sec< 0 || sec > 255)
-    sec = 2;
-  else {
-    debugPrint("[+] OTC Delay => ");
-    debugPrintlnCmd(sec);
-    writeDataMemory(0x929B, sec, 1);
-  }
-}
-
-// Set user-defined discharging over temperature protection
-void bq76952::setDischargingTemperatureMaxLimit(signed int temp, byte sec) {
-  if(temp < -40 || temp > 120)
-    temp = 60;
-  else {
-    debugPrintf("[+] OTD Threshold => %#x\n", temp);
-    writeDataMemory(0x929D, temp, 1);
-  }
-  if(sec< 0 || sec > 255)
-    sec = 2;
-  else {
-    debugPrintf("[+] OTD Delay => %#x\n", sec);
-    writeDataMemory(0x929E, sec, 1);
-  }
-}
-#endif
 
 int BQConfig::CRC32(void) const
 {
@@ -1051,7 +961,10 @@ int BQRegister::getAddress(void) const
 
 const char *BQRegister::getDescription(void) const
 {
-  return m_descr;
+  if (m_descr)
+    return m_descr;
+  else
+    return "Empty";
 }
 
 float BQConfig::getUserAScaling(void) const
