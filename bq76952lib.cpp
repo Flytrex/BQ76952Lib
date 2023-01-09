@@ -657,8 +657,8 @@ int bq76952::getVoltages(BQVoltages_V *out)
 
 int bq76952::getCC2Current(float *current_amps) 
 {
-  int val = 0;
-  check(!m_directCommandRead(0x3A, 2, &val),  "%s: directCommandRead failed", __func__);
+  int16_t val = 0;
+  check(!m_directCommandRead(0x3A, 2, (int *) &val),  "%s: directCommandRead failed", __func__);
   *current_amps = m_userA_amps * val;
   return 0;
 
