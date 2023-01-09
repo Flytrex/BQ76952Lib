@@ -60,7 +60,9 @@ enum bq76952_voltages {
 
 struct BQVoltages_V {
 	float cells[BQ_N_CELLS];
-	float stack, pack, ld;
+	float stack, 	/* Top-of-stack voltage */
+			pack, 	/* PACK pin (parallel config: charger) */
+			ld;		/* LD pin 	(parallel config: load) */
 };
 
 enum bq76952_fet {
@@ -216,14 +218,14 @@ enum BQSafety {
 	BQSafety_A_PTOS		= BQ_ALERT_ENC(0x06, 3),
 
 	/* Safety Status C */
-	BQSafety_F_OCD3	= BQ_ALERT_ENC(0x07, 7),
+	BQSafety_F_OCD3	= BQ_ALERT_ENC(0x07, 7),			
 	BQSafety_F_SCDL	= BQ_ALERT_ENC(0x07, 6),
 	BQSafety_F_OCDL	= BQ_ALERT_ENC(0x07, 5),
 	BQSafety_F_COVL	= BQ_ALERT_ENC(0x07, 4),
 	BQSafety_F_PTOS	= BQ_ALERT_ENC(0x07, 3),
 
 	/* PF Alert A */
-	BQSafety_A_CUDEP	= BQ_ALERT_ENC(0x0A, 7),
+	BQSafety_A_CUDEP	= BQ_ALERT_ENC(0x0A, 7), // # 17 -- first "permanent fault"
 	BQSafety_A_SOTF		= BQ_ALERT_ENC(0x0A, 6),
 	BQSafety_A_SOT		= BQ_ALERT_ENC(0x0A, 4),
 	BQSafety_A_SOCD		= BQ_ALERT_ENC(0x0A, 3),
@@ -276,6 +278,8 @@ enum BQSafety {
 };
 
 #define BQ_N_ALERTS 36
+#define BQ_ITER_PERMAMENT_FAULT_START 17
+#define BQ_ITER_N_PFAULTS (BQ_N_ALERTS - BQ_ITER_PERMAMENT_FAULT_START)
 
 extern BQSafety const BQ_ALERT_ITERABLE[BQ_N_ALERTS];
 extern BQSafety const BQ_FAULT_ITERABLE[BQ_N_ALERTS];

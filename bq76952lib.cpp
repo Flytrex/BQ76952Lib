@@ -637,7 +637,11 @@ struct raw_voltages {
 int bq76952::getVoltages(BQVoltages_V *out)
 {
   raw_voltages raw = {0};
-  check(!m_directCommandRead(BQ_VOLTAGE_CELL1, sizeof(BQVoltages_V), (int *) &raw), 
+  uint8_t *puSecondRead = ((uint8_t *) &raw) + 32;
+  size_t remainder = sizeof(raw_voltages) % 32; 
+  check(!m_directCommandRead(BQ_VOLTAGE_CELL1, 32, (int *) &raw), 
+        "%s: directCommandRead failed", __func__);
+  check(!m_directCommandRead(BQ_VOLTAGE_CELL1 + remainder, remainder, (int *) puSecondRead), 
         "%s: directCommandRead failed", __func__);
   for (size_t i = 0; i < BQ_N_CELLS; ++i) {
     out->cells[i] = raw.cells[i] / 1e3;
