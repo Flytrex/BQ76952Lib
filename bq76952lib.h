@@ -60,9 +60,9 @@ enum bq76952_voltages {
 
 struct BQVoltages_V {
 	float cells[BQ_N_CELLS];
-	float stack, 	/* Top-of-stack voltage */
-			pack, 	/* PACK pin (parallel config: charger) */
-			ld;		/* LD pin 	(parallel config: load) */
+	float 	STACK, 	/* Top-of-stack voltage */
+			PACK, 	/* PACK pin (parallel config: charger) */
+			LD;		/* LD pin 	(parallel config: load) */
 };
 
 enum bq76952_fet {

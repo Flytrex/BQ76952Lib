@@ -654,9 +654,9 @@ int bq76952::getVoltages(BQVoltages_V *out)
   for (size_t i = 0; i < BQ_N_CELLS; ++i) {
     out->cells[i] = raw.cells[i] / 1e3;
   }
-  out->stack = raw.stack * m_userV_volts;
-  out->pack = raw.pack * m_userV_volts;
-  out->ld = raw.ld * m_userV_volts;
+  out->STACK = raw.stack * m_userV_volts;
+  out->PACK = raw.pack * m_userV_volts;
+  out->LD = raw.ld * m_userV_volts;
   return 0;
 
   error:
