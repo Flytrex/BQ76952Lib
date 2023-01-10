@@ -638,8 +638,8 @@ int bq76952::getVoltage(bq76952_voltages channel, float *o_V)
 }
 
 struct raw_voltages {
-	uint16_t cells[16];
-	uint16_t stack, pack, ld;
+	int16_t cells[16];
+	int16_t stack, pack, ld;
 } __attribute__((packed));
 
 int bq76952::getVoltages(BQVoltages_V *out)
