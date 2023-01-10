@@ -338,8 +338,11 @@ public:
 	bq76952() = default;
 
 	/* Init */
-	int begin(byte alertPin, TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
+	int init(byte alertPin, TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
 	
+	/* Begin (initial config download and initialization) */
+	int begin();
+
 	/* Upload config */
 	int configUpload(const BQConfig *config);
 	

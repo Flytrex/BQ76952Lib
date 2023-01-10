@@ -573,7 +573,7 @@ int bq76952::m_configDownload(BQConfig *config)
 
 /////// API FUNCTIONS ///////
 
-int bq76952::begin(byte alertPin, TwoWire *i2c, bool loud, byte address) 
+int bq76952::init(byte alertPin, TwoWire *i2c, bool loud, byte address)
 {
   checkbq(0 <= alertPin && alertPin <= 44, "invalid pin number %d", alertPin);
   m_alertPin = alertPin;
@@ -581,11 +581,19 @@ int bq76952::begin(byte alertPin, TwoWire *i2c, bool loud, byte address)
   m_I2C_Address = address;
   pinMode(alertPin, INPUT);
   m_I2C = i2c;
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::begin() 
+{
   checkbq(m_I2C->begin(), "%s: failed to init I2C", __func__);
   m_I2C->setTimeOut(2);
   BQConfig::getDefaultConfig(&m_currentConfig);
   m_defaultConfigCRC = m_currentConfig.CRC32();
-  check(!m_configDownload(&m_currentConfig), "%s(address=0x%02X): failed to download config", __func__, address);
+  check(!m_configDownload(&m_currentConfig), "%s(address=0x%02X): failed to download config", __func__, m_I2C_Address);
   m_updateUnits();
   return 0;
 
