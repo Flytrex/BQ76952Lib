@@ -765,6 +765,21 @@ void bq76952::setLoudness(bool loud)
   m_loud = loud;
 }
 
+int bq76952::requestEnableAll(void)
+{
+  return m_subCommandWrite(0x0096);
+}
+
+int bq76952::requestDisableDischarge(void)
+{
+  return m_subCommandWrite(0x0093);
+}
+
+int bq76952::requestDisableCharge(void)
+{
+  return m_subCommandWrite(0x0094);
+}
+
 #define SAFETY_REG(x) (x >> 8)
 #define SAFETY_BIT(x) (x & 0xF)
 

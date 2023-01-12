@@ -376,8 +376,14 @@ public:
 	/* Get current safety state */
 	int getSafetyState(BQSafetyState *ss);
 
-	/* Enable/disable discharging. */
-	int enableDischarging(bool en);
+	/* Open both FETs. */
+	int requestEnableAll(void);
+
+	/* Shut discharge FET. */
+	int requestDisableDischarge(void);
+
+	/* Shut charge FET. */
+	int requestDisableCharge(void);
 
 	/* Enable/disable charging. */
 	int enableCharging(bool en);
