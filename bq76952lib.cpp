@@ -519,7 +519,6 @@ int bq76952::configUpload(const BQConfig *config)
 int bq76952::m_configDownload(BQConfig *config)
 {
   message("%s: config download started", __func__);
-  checkbq(!m_enterConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
     uint16_t address = config->m_registers[i].getAddress();
     int type = config->m_registers[i].getType();
@@ -561,7 +560,7 @@ int bq76952::m_configDownload(BQConfig *config)
         check_fatal(0, "%s: invalid type %d on register 0x%04X", __func__, type, address);
       }
   }
-  checkbq(!m_exitConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
+  checkbq(!m_exitConfigUpdate(), "%s: failed to sent exitConfigUpdate", __func__);
   message("%s: config downloaded, crc 0x%08X (default is 0x%08X)", 
               __func__, m_currentConfig.CRC32(), m_defaultConfigCRC);
   return 0;
@@ -649,7 +648,7 @@ int bq76952::getVoltages(BQVoltages_V *out)
   size_t remainder = sizeof(raw_voltages) % 32; 
   checkbq(!m_directCommandRead(BQ_VOLTAGE_CELL1, 32, (int *) &raw), 
         "%s: directCommandRead failed", __func__);
-  checkbq(!m_directCommandRead(BQ_VOLTAGE_CELL1 + remainder, remainder, (int *) puSecondRead), 
+  checkbq(!m_directCommandRead(BQ_VOLTAGE_CELL1 + 32, remainder, (int *) puSecondRead), 
         "%s: directCommandRead failed", __func__);
   for (size_t i = 0; i < BQ_N_CELLS; ++i) {
     out->cells[i] = raw.cells[i] / 1e3;
