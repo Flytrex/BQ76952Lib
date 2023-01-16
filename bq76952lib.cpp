@@ -780,6 +780,28 @@ int bq76952::requestDisableCharge(void)
   return m_subCommandWrite(0x0094);
 }
 
+struct rawCharge {
+  int32_t intPortion;
+  int32_t fracPortion;
+};
+
+int bq76952::getAccumulatedCharge(float *out)
+{
+  rawCharge buffer;
+  float out, frac;
+  checkbq(!m_subCommandRead(0x0076, sizeof(buffer), (byte *) &buffer), "%s: m_subCommandRead failed", __func__);
+  *out = ((float) buffer.fracPortion / ((float) UINT32_MAX) + (float) buffer.intPortion) * m_userA_amps;
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::resetAccumulatedCharge(void)
+{
+  return m_subCommandWrite(0x0082);
+}
+
 #define SAFETY_REG(x) (x >> 8)
 #define SAFETY_BIT(x) (x & 0xF)
 

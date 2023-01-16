@@ -390,4 +390,10 @@ public:
 
 	/* Set message level */
 	void setLoudness(bool loudness);
+
+	/* Get accumulated charge */
+	int getAccumulatedCharge(float *out_Ah);
+
+	/* Reset charge accumulator */
+	int resetAccumulatedCharge(void);
 };
