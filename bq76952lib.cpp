@@ -827,10 +827,11 @@ struct DASTATUS5 {
   int16_t fetTemperature;
   int16_t maxCellTemperature;
   int16_t minCellTemperature;
+  int16_t avgCellTemperature;
   int16_t cc3;
   int16_t cc1;
-  int16_t cc2Counts;
-  int16_t cc3Counts;
+  int32_t cc2Counts;
+  int32_t cc3Counts;
 } __attribute__((packed));
 
 int bq76952::getCC3Current(float *outA)
