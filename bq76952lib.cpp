@@ -780,16 +780,22 @@ int bq76952::requestDisableCharge(void)
   return m_subCommandWrite(0x0094);
 }
 
-struct rawCharge {
+struct DASTATUS6 {
   int32_t intPortion;
   uint32_t fracPortion;
+  uint32_t accumulatedTime;
+  uint32_t CFETOFF_counts;
+  uint32_t DFETOFF_counts;
+  uint32_t ALERT_counts;
+  uint32_t TS1_counts;
+  uint32_t TS2_counts;
 } __attribute__((packed));
 
 int bq76952::getAccumulatedCharge(float *out)
 {
-  rawCharge buffer;
+  DASTATUS6 buffer;
   checkbq(!m_subCommandRead(0x0076, sizeof(buffer), (byte *) &buffer), "%s: m_subCommandRead failed", __func__);
-  *out = ((float) buffer.fracPortion / ((float) UINT32_MAX) + (float) buffer.intPortion) * m_userA_amps - 0.5;
+  *out = ((float) buffer.fracPortion / ((float) UINT32_MAX) - 0.5 + (float) buffer.intPortion) * m_userA_amps;
   return 0;
 
   error:
