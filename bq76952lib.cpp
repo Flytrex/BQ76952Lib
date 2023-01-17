@@ -782,15 +782,14 @@ int bq76952::requestDisableCharge(void)
 
 struct rawCharge {
   int32_t intPortion;
-  int32_t fracPortion;
-};
+  uint32_t fracPortion;
+} __attribute__((packed));
 
 int bq76952::getAccumulatedCharge(float *out)
 {
   rawCharge buffer;
-  float out, frac;
   checkbq(!m_subCommandRead(0x0076, sizeof(buffer), (byte *) &buffer), "%s: m_subCommandRead failed", __func__);
-  *out = ((float) buffer.fracPortion / ((float) UINT32_MAX) + (float) buffer.intPortion) * m_userA_amps;
+  *out = ((float) buffer.fracPortion / ((float) UINT32_MAX) + (float) buffer.intPortion) * m_userA_amps - 0.5;
   return 0;
 
   error:
@@ -800,6 +799,61 @@ int bq76952::getAccumulatedCharge(float *out)
 int bq76952::resetAccumulatedCharge(void)
 {
   return m_subCommandWrite(0x0082);
+}
+
+float bq76952::getCC2UpdateRate(void)
+{
+   /* Settings.Configuration.Power Config[FASTADC] */
+    for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    if (0x9234 == m_currentConfig.m_registers[i].getAddress()) {
+      if ((1 << 6) & m_currentConfig.m_registers[i].getI16()) {
+        return 1.5e-3;
+      }
+      else {
+        return 3e-3;
+      }
+    }
+  }
+  check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
+}
+
+struct DASTATUS5 {
+  int16_t VREG18;
+  int16_t VSS;
+  int16_t maxCellVoltage;
+  int16_t minCellVoltage;
+  int16_t batteryVoltageSum;
+  int16_t cellTemperature;
+  int16_t fetTemperature;
+  int16_t maxCellTemperature;
+  int16_t minCellTemperature;
+  int16_t cc3;
+  int16_t cc1;
+  int16_t cc2Counts;
+  int16_t cc3Counts;
+} __attribute__((packed));
+
+int bq76952::getCC3Current(float *outA)
+{
+  DASTATUS5 buffer;
+  checkbq(!m_subCommandRead(0x0075, sizeof(buffer), (byte *) &buffer), "%s: m_subCommandRead failed", __func__);
+  *outA = buffer.cc3 * m_userA_amps;
+  return 0;
+
+  error:
+  return -1;
+}
+
+float bq76952::getCC3Period(void)
+{
+   /* Settings.Configuration.CC3 Samples */
+    for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
+    if (0x9307 == m_currentConfig.m_registers[i].getAddress()) {
+      byte nSamples = (byte) m_currentConfig.m_registers[i].getI8();
+      return nSamples * getCC2UpdateRate();
+    }
+  }
+  check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
 }
 
 #define SAFETY_REG(x) (x >> 8)

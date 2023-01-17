@@ -352,8 +352,17 @@ public:
 	/* Send a reset command (this will reset the configuration to OTP) */
 	int reset(void);
 	
-	/* Get primary current */
+	/* Get primary current: 3 ms update rate by default */
 	int getCC2Current(float *out_A);
+
+	/* Get average current  */
+	int getCC3Current(float *out_A);
+
+	/* Get CC2 update rate (1.5 or 3 ms depending on config) in seconds */
+	float getCC2UpdateRate(void);
+
+	/* Get averaging window (dependent on configuration) in seconds */
+	float getCC3Period(void);
 	
 	/* Get voltage on channel */
 	int getVoltage(bq76952_voltages channel, float *o_V);
