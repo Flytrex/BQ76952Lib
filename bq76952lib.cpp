@@ -153,7 +153,7 @@ int bq76952::m_writeBulkAddress(int command, size_t size)
 
 int bq76952::m_subCommandWrite(int command, size_t size, byte *data) 
 {
-  return m_bulkWrite(command, size, data);
+  return m_bulkWrite(command, size, data, true);
 }
 
 int bq76952::m_pollTransferSetup(int address, unsigned short maxWait)
@@ -301,7 +301,7 @@ int bq76952::m_memReadF32(int address, float *o_data)
   return -1;
 }
 
-int bq76952::m_bulkWrite(int address, int size, byte *data)
+int bq76952::m_bulkWrite(int address, int size, byte *data, bool skipTxSetup)
 {
   int erc = 0;
   byte checksum = 0;
@@ -319,9 +319,11 @@ int bq76952::m_bulkWrite(int address, int size, byte *data)
   }
 
   /* wait for transfer setup */
-  checkbq(!m_pollTransferSetup(address), "%s(scmd=0x%04X, size=%u): transfer setup timed out", __func__, address, size);
-  checkbq(!(erc = m_I2C->endTransmission(true)), 
-              "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+  if (!skipTxSetup) {
+    checkbq(!m_pollTransferSetup(address), "%s(scmd=0x%04X, size=%u): transfer setup timed out", __func__, address, size);
+    checkbq(!(erc = m_I2C->endTransmission(true)), 
+                "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+  }
 
   /* write data to device transfer buffer */
   m_I2C->beginTransmission(m_I2C_Address);
@@ -861,6 +863,53 @@ float bq76952::getCC3Period(void)
     }
   }
   check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
+}
+
+/* Enable/disable charging. */
+int bq76952::enableCharging(bool en)
+{
+  uint8_t buf;
+  bool chg, dsg, pchg, pdsg;
+  check(!m_directCommandRead(0x7F, 1, (int *) &buf), "%s: m_directCommandRead failed", __func__);
+  /* 12.2.20 FET Status Register: high if FET is on */
+  if (en) { 
+    buf |= (1 << 0);  // CHG_FET
+    buf |= (1 << 1);  // PCHG_FET
+  }
+  else {
+    buf &= ~(1 << 0);  // CHG_FET
+    buf &= ~(1 << 1);  // PCHG_FET
+  }
+  /* 12.5.6 FET Control: low if FET allowed to turn on */
+  buf = ~buf;
+  buf &= 0b00001111; 
+  check(!m_subCommandWrite(0x0097, 1, &buf), "%s: m_subCommandWrite failed", __func__);
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::enableDischarging(bool en)
+{
+  uint8_t buf;
+  bool chg, dsg, pchg, pdsg;
+  check(!m_directCommandRead(0x7F, 1, (int *) &buf), "%s: m_directCommandRead failed", __func__);
+  if (en) { 
+    buf |= (1 << 2);  // DSG_FET
+    buf |= (1 << 3);  // PDSG_FET
+  }
+  else {
+    buf &= ~(1 << 2);  // DSG_FET
+    buf &= ~(1 << 3);  // PDSG_FET
+  }
+  buf = ~buf;
+  buf &= 0b00001111; 
+  check(!m_subCommandWrite(0x0097, 1, &buf), "%s: m_subCommandWrite failed", __func__);
+  return 0;
+
+  error:
+  return -1;
 }
 
 #define SAFETY_REG(x) (x >> 8)

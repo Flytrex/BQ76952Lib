@@ -310,8 +310,8 @@ private:
 	float m_userV_volts;			/* How many volts in one unit of 'userV' registers? */
 
 	int m_writeBulkAddress(int command, size_t size);
-	int m_bulkWrite(int address, int size, byte *data);
-	int m_pollTransferSetup(int address, unsigned short maxWait = 10);
+	int m_bulkWrite(int address, int size, byte *data, bool skipTxSetup=false);
+	int m_pollTransferSetup(int address, unsigned short maxWait = 50);
 
 	int m_bulkRead(int address, int expectedSize, byte *o_data);
 	int m_directCommandWrite(byte command, size_t size, int data);
@@ -397,6 +397,9 @@ public:
 
 	/* Enable/disable charging. */
 	int enableCharging(bool en);
+
+	/* Enable/disable discharging. */
+	int enableDischarging(bool en);
 
 	/* Set message level */
 	void setLoudness(bool loudness);
