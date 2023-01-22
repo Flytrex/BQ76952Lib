@@ -291,6 +291,7 @@ class BQSafetyState {
 public:
 	bool getSafetyFlag(BQSafety flag) const;
 	static const char *safetyFlagToString(BQSafety flag);
+	int snprintLockouts(char *buffer, size_t size);
 };
 
 #define BQ_I2C_DEFAULT_ADDRESS 0x08

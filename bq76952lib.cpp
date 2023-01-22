@@ -935,6 +935,22 @@ const char *BQSafetyState::safetyFlagToString(BQSafety flag)
   }
 }
 
+int BQSafetyState::snprintLockouts(char *buffer, size_t bufSize)
+{
+    
+    char *pLast = buffer;
+    size_t nActive = 0;
+    for (size_t i = 0; i < BQ_N_ALERTS; ++i) {
+        BQSafety alert = BQ_FAULT_ITERABLE[i];
+        bool active = getSafetyFlag(alert);
+        if (active) {
+            pLast += snprintf(pLast, bufSize - (pLast - buffer), "%s ", safetyFlagToString(alert));
+            nActive++;
+        }
+    }
+    return nActive;
+}
+
 int BQConfig::CRC32(void) const
 {
   uint32_t checksum = UINT32_MAX;
