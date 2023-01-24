@@ -158,6 +158,15 @@ public:
 
 #define BQ76952_TOT_REGISTERS 272
 
+struct BQCalibration {
+	/* This class contains only the values that are likely to be different in each unit
+		as opposed to values that are likely to be shared in a whole model run. */
+	uint16_t cellGain[BQ_N_CELLS];
+    uint16_t packGain;
+    uint16_t tosGain;
+    uint16_t ldGain;
+};
+
 class bq76952;
 
 class BQConfig {
@@ -171,6 +180,8 @@ public:
 	int CRC32(void) const;
 	float getUserAScaling(void) const;
 	float getUserVScaling(void) const;
+	void applyCalibration(const BQCalibration &calib);
+	void getCalibration(BQCalibration &calib);
 };
 
 #define BQ_ALERT_ENC(reg, bit) (reg << 8 | bit)

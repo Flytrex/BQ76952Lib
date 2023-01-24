@@ -1178,6 +1178,28 @@ float BQConfig::getUserVScaling(void) const
   check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
 }
 
+void BQConfig::applyCalibration(const BQCalibration &calib)
+{
+  /* first 16 registers are luckily exactly the cell gain */
+  for (size_t i = 0; i < BQ_N_CELLS; ++i) {
+    m_registers[i].setI16(calib.cellGain[i]);
+  }
+  m_registers[16].setI16(calib.packGain);
+  m_registers[17].setI16(calib.tosGain);
+  m_registers[18].setI16(calib.ldGain);
+}
+
+void BQConfig::getCalibration(BQCalibration &calib)
+{
+  /* first 16 registers are luckily exactly the cell gain */
+  for (size_t i = 0; i < BQ_N_CELLS; ++i) {
+    calib.cellGain[i] = m_registers[i].getI16();
+  }
+  calib.packGain = m_registers[16].getI16();
+  calib.tosGain = m_registers[17].getI16();
+  calib.ldGain = m_registers[18].getI16();
+}
+
 void BQConfig::getDefaultConfig(BQConfig *out)
 {
   out->setRegister(  0,	BQRegister(0x9180, (uint16_t) 	 0x00000000));
