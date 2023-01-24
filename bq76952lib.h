@@ -65,59 +65,6 @@ struct BQVoltages_V {
 			LD;		/* LD pin 	(parallel config: load) */
 };
 
-enum bq76952_fet {
-	CHG,
-	DCH,
-	ALL
-};
-
-enum bq76952_fet_state {
-	OFF,
-	ON
-};
-
-enum bq76952_scd_thresh {
-	SCD_10,
-	SCD_20,
-	SCD_40,
-	SCD_60,
-	SCD_80,
-	SCD_100,
-	SCD_125,
-	SCD_150,
-	SCD_175,
-	SCD_200,
-	SCD_250,
-	SCD_300,
-	SCD_350,
-	SCD_400,
-	SCD_450,
-	SCD_500
-};
-
-typedef union protection {
-	struct {
-		uint8_t SC_DCHG            :1;
-		uint8_t OC2_DCHG           :1;
-		uint8_t OC1_DCHG           :1;
-		uint8_t OC_CHG             :1;
-		uint8_t CELL_OV            :1;
-		uint8_t CELL_UV            :1;
-	} bits;
-} bq76952_protection_t;
-
-typedef union temperatureProtection {
-	struct {
-		uint8_t OVERTEMP_FET		:1;
-		uint8_t OVERTEMP_INTERNAL	:1;
-		uint8_t OVERTEMP_DCHG		:1;
-		uint8_t OVERTEMP_CHG		:1;
-		uint8_t UNDERTEMP_INTERNAL	:1;
-		uint8_t UNDERTEMP_DCHG		:1;
-		uint8_t UNDERTEMP_CHG		:1;
-	} bits;
-} bq76952_temperature_t;
-
 struct BQPrimaryState {
 	bool charging;
 	bool precharging;

@@ -24,59 +24,6 @@
 #define CMD_DIR_XFER_CHKSUM           ((byte) 0x60)
 #define MAX_TRANSFER_SIZE (CMD_DIR_XFER_CHKSUM - CMD_DIR_XFER_BUF_START)
 
-// BQ76952 - Voltage measurement commands
-#define CMD_READ_VOLTAGE_CELL_1   0x14
-#define CMD_READ_VOLTAGE_CELL_2   0x16
-#define CMD_READ_VOLTAGE_CELL_3   0x18
-#define CMD_READ_VOLTAGE_CELL_4   0x1A
-#define CMD_READ_VOLTAGE_CELL_5   0x1C
-#define CMD_READ_VOLTAGE_CELL_6   0x1E
-#define CMD_READ_VOLTAGE_CELL_7   0x20
-#define CMD_READ_VOLTAGE_CELL_8   0x22
-#define CMD_READ_VOLTAGE_CELL_9   0x24
-#define CMD_READ_VOLTAGE_CELL_10  0x26
-#define CMD_READ_VOLTAGE_CELL_11  0x28
-#define CMD_READ_VOLTAGE_CELL_12  0x2A
-#define CMD_READ_VOLTAGE_CELL_13  0x2C
-#define CMD_READ_VOLTAGE_CELL_14  0x2E
-#define CMD_READ_VOLTAGE_CELL_15  0x30
-#define CMD_READ_VOLTAGE_CELL_16  0x32
-#define CMD_READ_VOLTAGE_STACK    0x34
-#define CMD_READ_VOLTAGE_PACK     0x36
-
-// BQ76952 - Direct Commands
-#define CMD_DIR_SPROTEC           0x02
-#define CMD_DIR_FPROTEC           0x03
-#define CMD_DIR_STEMP             0x04
-#define CMD_DIR_FTEMP             0x05
-#define CMD_DIR_SFET              0x06
-#define CMD_DIR_FFET              0x07
-#define CMD_DIR_VCELL_1           0x14
-#define CMD_DIR_INT_TEMP          0x68
-#define CMD_DIR_CC2_CUR           0x3A
-#define CMD_DIR_FET_STAT          0x7F
-
-// Alert Bits in BQ76952 registers
-#define BIT_SA_SC_DCHG            7
-#define BIT_SA_OC2_DCHG           6
-#define BIT_SA_OC1_DCHG           5
-#define BIT_SA_OC_CHG             4
-#define BIT_SA_CELL_OV            3
-#define BIT_SA_CELL_UV            2
-
-#define BIT_SB_OTF                7
-#define BIT_SB_OTINT              6
-#define BIT_SB_OTD                5
-#define BIT_SB_OTC                4
-#define BIT_SB_UTINT              2
-#define BIT_SB_UTD                1
-#define BIT_SB_UTC                0
-
-// Inline functions
-#define CELL_NO_TO_ADDR(cellNo) (0x14 + ((cellNo-1)*2))
-#define LOW_BYTE(data) (byte)(data & 0x00FF)
-#define HIGH_BYTE(data) (byte)((data >> 8) & 0x00FF)
-
 static const char *reg2str(int reg);
 
 typedef enum {
