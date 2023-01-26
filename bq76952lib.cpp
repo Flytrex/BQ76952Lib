@@ -1134,17 +1134,19 @@ void BQConfig::applyCalibration(const BQCalibration &calib)
   m_registers[16].setI16(calib.packGain);
   m_registers[17].setI16(calib.tosGain);
   m_registers[18].setI16(calib.ldGain);
+  m_registers[25].setI16(calib.currentOffset);
 }
 
 void BQConfig::getCalibration(BQCalibration &calib)
 {
-  /* first 16 registers are luckily exactly the cell gain */
+  /* first 16 registers are luckily exactly the cell gains */
   for (size_t i = 0; i < BQ_N_CELLS; ++i) {
     calib.cellGain[i] = m_registers[i].getI16();
   }
   calib.packGain = m_registers[16].getI16();
   calib.tosGain = m_registers[17].getI16();
   calib.ldGain = m_registers[18].getI16();
+  calib.currentOffset = m_registers[25].getI16();
 }
 
 void BQConfig::getDefaultConfig(BQConfig *out)

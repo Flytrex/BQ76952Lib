@@ -112,6 +112,7 @@ struct BQCalibration {
     uint16_t packGain;
     uint16_t tosGain;
     uint16_t ldGain;
+    uint16_t currentOffset;
 };
 
 class bq76952;
