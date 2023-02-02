@@ -354,11 +354,8 @@ public:
 	/* Shut charge FET. */
 	int requestDisableCharge(void);
 
-	/* Enable/disable charging. */
-	int enableCharging(bool en);
-
-	/* Enable/disable discharging. */
-	int enableDischarging(bool en);
+	/* Individuial FET state request */
+	int fetRequest(bool chgEnable, bool dsgEnable);
 
 	/* Set message level */
 	void setLoudness(bool loudness);
