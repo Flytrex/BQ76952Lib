@@ -12,6 +12,7 @@
 
 #include "util/dbg-macro.h"
 #include "util/crc.h"
+#include "util.h"
 
 #define message(M, ...) debug("bq76952: " M, ##__VA_ARGS__)
 #define checkbq(A, M, ...) check(A, "bq76952: " M, ##__VA_ARGS__)
@@ -1106,6 +1107,9 @@ float BQConfig::getUserVScaling(void) const
   check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
 }
 
+const static float C_CCGAIN_NUMERATOR = 7.4768;         /* 13.2.2.1 Calibration:Current:CC Gain */
+const static float C_CAPGAIN_MULTIPLIER = 298261.6178;  /* 13.2.2.2 Calibration:Current:Capacity Gain */
+
 void BQConfig::applyCalibration(const BQCalibration &calib)
 {
   /* first 16 registers are luckily exactly the cell gain */
@@ -1116,6 +1120,12 @@ void BQConfig::applyCalibration(const BQCalibration &calib)
   m_registers[17].setI16(calib.tosGain);
   m_registers[18].setI16(calib.ldGain);
   m_registers[25].setI16(calib.currentOffset);
+
+  /* 13.2.2.1 Calibration:Current:CC Gain */
+  float ccGainValue = ftx_util::flclamp(1e-2, C_CCGAIN_NUMERATOR / calib.senseResistor, 10e2);
+  m_registers[20].setF32(ccGainValue);
+  /* 13.2.2.2 Calibration:Current:Capacity Gain */
+  m_registers[21].setF32(C_CAPGAIN_MULTIPLIER * ccGainValue);
 }
 
 void BQConfig::getCalibration(BQCalibration &calib)
@@ -1128,6 +1138,7 @@ void BQConfig::getCalibration(BQCalibration &calib)
   calib.tosGain = m_registers[17].getI16();
   calib.ldGain = m_registers[18].getI16();
   calib.currentOffset = m_registers[25].getI16();
+  calib.senseResistor = C_CCGAIN_NUMERATOR / m_registers[20].getF32();
 }
 
 void BQConfig::getDefaultConfig(BQConfig *out)

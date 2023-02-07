@@ -124,6 +124,7 @@ struct BQCalibration {
     uint16_t tosGain;
     uint16_t ldGain;
     uint16_t currentOffset;
+    float senseResistor;
 };
 
 class bq76952;
