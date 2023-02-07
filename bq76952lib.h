@@ -71,9 +71,9 @@ enum bq76952_voltages {
 
 struct BQVoltages_V {
 	float cells[BQ_N_CELLS];
-	float 	STACK, 	/* Top-of-stack voltage */
-			PACK, 	/* PACK pin (parallel config: charger) */
-			LD;		/* LD pin 	(parallel config: load) */
+	float 	STACK, 	/* Top-of-stack voltage, internal, no pin */
+			PACK, 	/* PACK pin voltage */
+			LD;		/* LD pin voltage */
 };
 
 struct BQPrimaryState {
