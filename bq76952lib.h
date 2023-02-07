@@ -16,6 +16,10 @@
 #include <Wire.h>
 
 enum bq76952_thermistor {
+	BQ_THERMISTOR_INT = 0x68,
+	BQ_THERMISTOR_CFETOFF = 0x6A,
+	BQ_THERMISTOR_DFETOFF = 0x6C,
+	BQ_THERMISTOR_ALERT = 0x6E,
 	BQ_THERMISTOR_TS1 = 0x70,
 	BQ_THERMISTOR_TS2 = 0x72,
 	BQ_THERMISTOR_TS3 = 0x74,
@@ -25,7 +29,14 @@ enum bq76952_thermistor {
 };
 
 struct BQTemps_C {
-	float 	ts1,
+	/* temperature at the given BQ76952 pin
+	   (check your config to see which ones're configured 
+	   as thermistors and what do they actually measure)*/
+	float 	int_,
+			cfetoff,
+			dfetoff,
+			alert,
+			ts1,
 			ts2,
 			ts3,
 			hdq,

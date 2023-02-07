@@ -623,7 +623,11 @@ int bq76952::getCC2Current(float *current_amps)
 }
 
 struct temperatures_raw {
-	uint16_t ts1;
+	uint16_t int_;
+  uint16_t cfetoff;
+  uint16_t dfetoff;
+  uint16_t alert;
+  uint16_t ts1;
   uint16_t ts2;
   uint16_t ts3;
   uint16_t hdq;
@@ -639,8 +643,12 @@ static float convert_temp(uint16_t raw)
 int bq76952::getThermistors(BQTemps_C *out)
 {
   temperatures_raw raw = {0};
-  checkbq(!m_directCommandRead(BQ_THERMISTOR_TS1, sizeof(temperatures_raw), (int *) &raw), 
+  checkbq(!m_directCommandRead(BQ_THERMISTOR_INT, sizeof(temperatures_raw), (int *) &raw), 
         "%s: directCommandRead failed", __func__);
+  out->int_ = convert_temp(raw.int_);
+  out->cfetoff = convert_temp(raw.cfetoff);
+  out->dfetoff = convert_temp(raw.dfetoff);
+  out->alert = convert_temp(raw.alert);
   out->ts1 = convert_temp(raw.ts1);
   out->ts2 = convert_temp(raw.ts2);
   out->ts3 = convert_temp(raw.ts3);
