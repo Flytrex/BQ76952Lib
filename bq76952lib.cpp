@@ -824,13 +824,13 @@ float bq76952::getCC3Period(void)
 int bq76952::fetRequest(bool chgEnable, bool dsgEnable)
 {
   uint8_t buf = 0;
-  if (chgEnable) { 
-    buf |= (1 << 0);  // CHG_FET
-    buf |= (1 << 1);  // PCHG_FET
-  }
   if (dsgEnable) { 
-    buf |= (1 << 2);  // DSG_FET
-    buf |= (1 << 3);  // PDSG_FET
+    buf |= (1 << 0);  // DSG_FET
+    buf |= (1 << 1);  // PDSG_FET
+  }
+  if (chgEnable) { 
+    buf |= (1 << 2);  // CHG_FET
+    buf |= (1 << 3);  // PCGH_FET
   }
   /* 12.5.6 FET Control: low if FET allowed to turn on */
   buf = ~buf;
