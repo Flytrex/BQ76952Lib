@@ -798,11 +798,14 @@ struct DASTATUS5 {
   int32_t cc3Counts;
 } __attribute__((packed));
 
-int bq76952::getCC3Current(float *outA)
+int bq76952::getCC3Current(float *outA, int *outADC)
 {
   DASTATUS5 buffer;
   checkbq(!m_subCommandRead(0x0075, sizeof(buffer), (byte *) &buffer), "%s: m_subCommandRead failed", __func__);
   *outA = buffer.cc3 * m_userA_amps;
+  if (outADC) {
+    *outADC = buffer.cc3Counts;
+  }
   return 0;
 
   error:
@@ -857,6 +860,8 @@ int bq76952::getVCalibADCCounts(BQRawCalibCounts *out)
   out->ldPin = raw.ldPin;
   out->packPin = raw.packPin;
   out->topOfStack = raw.tos;
+  out->cc2counts = ((raw.cc2 & 0x00FFFF00) >> 8) - 0xFFFF;
+  /* The datasheet off-handedly mentions using only the second and third bytes for calibration */
   return 0;
 
   error:
@@ -1131,6 +1136,11 @@ float BQConfig::getUserVScaling(void) const
 
 const static float C_CCGAIN_NUMERATOR = 7.4768;         /* 13.2.2.1 Calibration:Current:CC Gain */
 const static float C_CAPGAIN_MULTIPLIER = 298261.6178;  /* 13.2.2.2 Calibration:Current:Capacity Gain */
+
+float BQCalibration::getSenseResistorFromGain(float gain)
+{
+  return C_CCGAIN_NUMERATOR / gain;
+}
 
 void BQConfig::applyCalibration(const BQCalibration &calib)
 {

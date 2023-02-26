@@ -77,6 +77,7 @@ struct BQVoltages_V {
 };
 
 struct BQRawCalibCounts {
+	int cc2counts;
 	unsigned int packPin;
 	unsigned int topOfStack;
 	unsigned int ldPin;
@@ -131,6 +132,9 @@ struct BQCalibration {
     uint16_t ldGain;
     uint16_t currentOffset;
     float senseResistor;
+
+	/* Calculate sense resisor in Ohm based on given gain */
+	static float getSenseResistorFromGain(float gain);
 };
 
 class bq76952;
@@ -334,7 +338,7 @@ public:
 	int getCC2Current(float *out_A);
 
 	/* Get average current  */
-	int getCC3Current(float *out_A);
+	int getCC3Current(float *out_A, int *outADC = nullptr);
 
 	/* Get CC2 update rate (1.5 or 3 ms depending on config) in seconds */
 	float getCC2UpdateRate(void);
