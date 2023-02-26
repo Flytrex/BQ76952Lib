@@ -841,6 +841,28 @@ int bq76952::fetRequest(bool chgEnable, bool dsgEnable)
   return -1;
 }
 
+struct ReadCal1_raw {
+  int16_t cdc;
+  int32_t cc2;
+  uint16_t packPin;
+  uint16_t tos;
+  uint16_t ldPin;
+  int16_t dummy; /* For some reason the response length is 14, while the datasheets specify 12. */
+} __attribute__((packed));
+
+int bq76952::getVCalibADCCounts(BQRawCalibCounts *out)
+{
+  ReadCal1_raw raw;
+  check(!m_subCommandRead(0xf081, sizeof(ReadCal1_raw), (byte *) &raw), "%s: m_subCommandRead failed", __func__);
+  out->ldPin = raw.ldPin;
+  out->packPin = raw.packPin;
+  out->topOfStack = raw.tos;
+  return 0;
+
+  error:
+  return -1;
+}
+
 #define SAFETY_REG(x) (x >> 8)
 #define SAFETY_BIT(x) (x & 0xF)
 

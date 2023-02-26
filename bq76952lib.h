@@ -76,6 +76,12 @@ struct BQVoltages_V {
 			LD;		/* LD pin voltage */
 };
 
+struct BQRawCalibCounts {
+	unsigned int packPin;
+	unsigned int topOfStack;
+	unsigned int ldPin;
+};
+
 struct BQPrimaryState {
 	bool charging;
 	bool precharging;
@@ -377,4 +383,7 @@ public:
 
 	/* Reset charge accumulator */
 	int resetAccumulatedCharge(void);
+
+	/* Get raw ADC counts for PACK, STACK and LD */
+	int getVCalibADCCounts(BQRawCalibCounts *out);
 };
