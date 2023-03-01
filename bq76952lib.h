@@ -390,4 +390,10 @@ public:
 
 	/* Get raw ADC counts for PACK, STACK and LD */
 	int getVCalibADCCounts(BQRawCalibCounts *out);
+
+	/* Sleep mode allow/deny */
+	int sleepMode(bool allowed);
+
+	/* Deepsleep mode enter/exit */
+	int deepSleep(bool enter);
 };

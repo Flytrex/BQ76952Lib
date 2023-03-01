@@ -868,6 +868,43 @@ int bq76952::getVCalibADCCounts(BQRawCalibCounts *out)
   return -1;
 }
 
+/* Sleep mode allow/deny */
+int bq76952::sleepMode(bool allowed)
+{
+  int subcommand = allowed ? 0x0099 : 0x009A;
+  check(!m_subCommandWrite(subcommand), "%s: m_subCommandWrite failed", __func__);
+  return 0;
+
+  error:
+  return -1;
+}
+
+/* Deepsleep mode enter/exit */
+int bq76952::deepSleep(bool enter)
+{
+  if (enter) {
+    /* Must be sent two times as per the datasheet */
+    check(!m_subCommandWrite(0x000F), "%s: m_subCommandWrite failed", __func__);
+    check(!m_subCommandWrite(0x000F), "%s: m_subCommandWrite failed", __func__);
+    vTaskDelay(500);
+    uint16_t csr = 0;
+    check(!m_directCommandRead(0x00, 2, (int *) &csr), "%s: m_directCommandRead failed", __func__);
+    check(csr & (1 << 2), "%s: device failed to enter DEEPSLEEP mode", __func__);
+  }
+  else {
+    check(!m_subCommandWrite(0x000E), "%s: m_subCommandWrite failed", __func__);
+    vTaskDelay(500);
+    uint16_t csr = 0;
+    check(!m_directCommandRead(0x00, 2, (int *) &csr), "%s: m_directCommandRead failed", __func__);
+    check(!(csr & (1 << 0)), "%s: device failed to exit DEEPSLEEP mode", __func__);
+  }
+  info("%s: BQ76952 DEEPSLEEP mode change successful: %d", __func__, enter);
+  return 0;
+
+  error:
+  return -1;
+}
+
 #define SAFETY_REG(x) (x >> 8)
 #define SAFETY_BIT(x) (x & 0xF)
 
