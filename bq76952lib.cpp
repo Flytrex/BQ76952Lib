@@ -905,6 +905,17 @@ int bq76952::deepSleep(bool enter)
   return -1;
 }
 
+int bq76952::getCellBalancingMask(int *o_mask)
+{
+  uint16_t bmask = 0;
+  check(!m_subCommandRead(0x0083, 2, (uint8_t *) &bmask), "%s: m_subCommandRead failed", __func__);
+  *o_mask = bmask;
+  return 0;
+
+  error:
+  return -1;
+}
+
 #define SAFETY_REG(x) (x >> 8)
 #define SAFETY_BIT(x) (x & 0xF)
 

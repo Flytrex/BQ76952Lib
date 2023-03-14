@@ -396,4 +396,7 @@ public:
 
 	/* Deepsleep mode enter/exit */
 	int deepSleep(bool enter);
+
+	/* Get cell balancing bitmask */
+	int getCellBalancingMask(int *o_bitmask);
 };
