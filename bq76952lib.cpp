@@ -1201,7 +1201,7 @@ void BQConfig::applyCalibration(const BQCalibration &calib)
   m_registers[25].setI16(calib.currentOffset);
 
   /* 13.2.2.1 Calibration:Current:CC Gain */
-  float ccGainValue = ftx_util::flclamp(1e-2, C_CCGAIN_NUMERATOR / calib.senseResistor, 10e2);
+  float ccGainValue = ftx_util::flclamp(1e-2, calib.currentSenseGain, 10e2);
   m_registers[20].setF32(ccGainValue);
   /* 13.2.2.2 Calibration:Current:Capacity Gain */
   m_registers[21].setF32(C_CAPGAIN_MULTIPLIER * ccGainValue);
@@ -1217,7 +1217,7 @@ void BQConfig::getCalibration(BQCalibration &calib)
   calib.tosGain = m_registers[17].getI16();
   calib.ldGain = m_registers[18].getI16();
   calib.currentOffset = m_registers[25].getI16();
-  calib.senseResistor = C_CCGAIN_NUMERATOR / m_registers[20].getF32();
+  calib.currentSenseGain = m_registers[20].getF32();
 }
 
 void BQConfig::getDefaultConfig(BQConfig *out)

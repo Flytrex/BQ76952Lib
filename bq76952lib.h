@@ -131,7 +131,7 @@ struct BQCalibration {
     uint16_t tosGain;
     uint16_t ldGain;
     uint16_t currentOffset;
-    float senseResistor;
+    float currentSenseGain;
 
 	/* Calculate sense resisor in Ohm based on given gain */
 	static float getSenseResistorFromGain(float gain);
