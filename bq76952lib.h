@@ -88,6 +88,7 @@ struct BQPrimaryState {
 	bool precharging;
 	bool discharging;
 	bool predischarging;
+	bool alertPin;
 };
 
 class BQConfig;
@@ -399,4 +400,10 @@ public:
 
 	/* Get cell balancing bitmask */
 	int getCellBalancingMask(int *o_bitmask);
+
+	/* Get ALARM Status*/
+	int getAlarmStatus(int *o_alarmStatus);
+
+	/* Clear ALARM Status */
+	int clearAlarmStatus(void);
 };

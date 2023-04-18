@@ -701,6 +701,7 @@ int bq76952::getPrimaryState(BQPrimaryState *out)
   out->discharging = reg & (1 << 2);
   out->precharging = reg & (1 << 1);
   out->predischarging = reg & (1 << 3);
+  out->alertPin = reg & (1 << 6);
   return 0;
 
   error:
@@ -914,6 +915,21 @@ int bq76952::getCellBalancingMask(int *o_mask)
 
   error:
   return -1;
+}
+
+int bq76952::getAlarmStatus(int *o_alarmStatus)
+{
+  *o_alarmStatus = 0;
+  check(!m_directCommandRead(0x64, 2, o_alarmStatus), "%s: m_directCommandRead failed", __func__);
+  return 0;
+
+  error:
+  return -1;
+}
+
+int bq76952::clearAlarmStatus(void)
+{
+  return m_directCommandWrite(0x62, 2, 0xFFFF);
 }
 
 #define SAFETY_REG(x) (x >> 8)
