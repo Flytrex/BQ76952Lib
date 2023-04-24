@@ -411,6 +411,7 @@ int bq76952::m_exitConfigUpdate(void)
 
 int bq76952::configUpload(const BQConfig *config)
 {
+  int readbackChecksumMismatched = false;
   int new_checksum = config->CRC32();
   message("%s: config upload started", __func__);
   checkbq(!m_enterConfigUpdate(), "%s: enterConfigUpdate failed", __func__);
@@ -455,15 +456,24 @@ int bq76952::configUpload(const BQConfig *config)
   message("%s: config upload complete, reading back and verifying", __func__);
   checkbq(!m_configDownload(&m_currentConfig), "%s: configDownload failed", __func__);
   m_updateUnits();
-  checkbq(m_currentConfig.CRC32() == new_checksum, 
+  if (m_currentConfig.CRC32() != new_checksum) {
+    readbackChecksumMismatched = true;
+    checkbq(0, 
         "%s: config readback checksum does not match: sent: %08X, got: %08X",
         __func__, m_currentConfig.CRC32(), new_checksum);
+  }
+
   message("%s: config uploaded and verified, checksum %08X", __func__, new_checksum);
   return 0;
 
   error:
   m_exitConfigUpdate();
-  return -1;
+  if (!readbackChecksumMismatched) {
+    return -1;
+  }
+  else {
+    return -2;
+  }
 }
 
 int bq76952::m_configDownload(BQConfig *config)

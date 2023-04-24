@@ -326,7 +326,11 @@ public:
 	/* Begin (initial config download and initialization) */
 	int begin();
 
-	/* Upload config */
+	/* Upload config.
+	 * Returns:
+	 *  0 = success 
+	 * -1 = general failure 
+	 * -2 = readback CRC mismatch */
 	int configUpload(const BQConfig *config);
 	
 	/* Last config's checksum */
