@@ -1227,7 +1227,7 @@ void BQConfig::applyCalibration(const BQCalibration &calib)
   m_registers[25].setI16(calib.currentOffset);
 
   /* 13.2.2.1 Calibration:Current:CC Gain */
-  float ccGainValue = ftx_util::flclamp(1e-2, calib.currentSenseGain, 10e2);
+  float ccGainValue = ftx_util::clamp(1e-2f, calib.currentSenseGain, 10e2f);
   m_registers[20].setF32(ccGainValue);
   /* 13.2.2.2 Calibration:Current:Capacity Gain */
   m_registers[21].setF32(C_CAPGAIN_MULTIPLIER * ccGainValue);
