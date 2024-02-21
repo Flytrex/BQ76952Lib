@@ -10,9 +10,9 @@
 
 #include <cfloat>
 
-#include "util/dbg-macro.h"
-#include "util/crc.h"
-#include "util.h"
+#include "ftx-esp-common/dbg-macro.h"
+#include "ftx-esp-common/crc.h"
+#include "ftx-esp-common/util.h"
 
 #define message(M, ...) debug("bq76952: " M, ##__VA_ARGS__)
 #define checkbq(A, M, ...) check(A, "bq76952: " M, ##__VA_ARGS__)
@@ -1170,19 +1170,20 @@ const char *BQRegister::getDescription(void) const
     return "Empty";
 }
 
-BQRegister *BQConfig::m_regByAddress(int address)
+BQRegister *BQConfig::m_regByAddress(int address) const
 {
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
     if (address == m_registers[i].m_address) {
-      return &m_registers[i];
-    } 
-    return NULL;
+      return (BQRegister *) &m_registers[i];
+    }
+  }
+  return NULL;
 }
 
 float BQConfig::getUserAScaling(void) const
 {
   int config;
-  BQRegister *reg = m_regByAddress(0x0903);
+  BQRegister *reg = m_regByAddress(0x9303);
   check_fatal(reg, "%s: this is not a valid BQ configuration", __func__);
   config = 0x3 & reg->m_value[0];
   switch (config) {
@@ -1201,9 +1202,9 @@ float BQConfig::getUserAScaling(void) const
 float BQConfig::getUserVScaling(void) const
 {
   int config;
-  BQRegister *reg = m_regByAddress(0x0903);
+  BQRegister *reg = m_regByAddress(0x9303);
   check_fatal(reg, "%s: this is not a valid BQ configuration", __func__);
-  config = config = (1 << 2) & this->m_registers[i].m_value[0];
+  config = (1 << 2) & reg->m_value[0];
   if (config) {
     return 1e-2;
   }
