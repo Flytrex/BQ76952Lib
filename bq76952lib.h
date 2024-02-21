@@ -144,6 +144,7 @@ class BQConfig {
 	friend class bq76952;
 	BQRegister m_registers[BQ76952_TOT_REGISTERS];
 	int m_checksum;
+	BQRegister *m_regByAddress(int address);
 public:
 	BQConfig() = default;
 	static void getDefaultConfig(BQConfig *buf);
@@ -153,6 +154,7 @@ public:
 	float getUserVScaling(void) const;
 	void applyCalibration(const BQCalibration &calib);
 	void getCalibration(BQCalibration &calib);
+	float getMaxChargeTemp(void) const;
 };
 
 #define BQ_ALERT_ENC(reg, bit) (reg << 8 | bit)

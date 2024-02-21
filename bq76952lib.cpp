@@ -1170,41 +1170,46 @@ const char *BQRegister::getDescription(void) const
     return "Empty";
 }
 
-float BQConfig::getUserAScaling(void) const
+BQRegister *BQConfig::m_regByAddress(int address)
 {
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
-    if (0x9303 == this->m_registers[i].m_address) {
-      int config = 0x3 & this->m_registers[i].m_value[0];
-      switch (config) {
-      default:
-      case 0:
-        return 1e-4;
-      case 1:
-        return 1e-3;
-      case 2:
-        return 1e-2;
-      case 3:
-        return 1e-1;
-      }
-    }
+    if (address == m_registers[i].m_address) {
+      return &m_registers[i];
+    } 
+    return NULL;
+}
+
+float BQConfig::getUserAScaling(void) const
+{
+  int config;
+  BQRegister *reg = m_regByAddress(0x0903);
+  check_fatal(reg, "%s: this is not a valid BQ configuration", __func__);
+  config = 0x3 & reg->m_value[0];
+  switch (config) {
+  default:
+  case 0:
+    return 1e-4;
+  case 1:
+    return 1e-3;
+  case 2:
+    return 1e-2;
+  case 3:
+    return 1e-1;
   }
-  check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
 }
 
 float BQConfig::getUserVScaling(void) const
 {
-  for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
-    if (0x9303 == this->m_registers[i].m_address) {
-      int config = (1 << 2) & this->m_registers[i].m_value[0];
-      if (config) {
-        return 1e-2;
-      }
-      else {
-        return 1e-3;
-      }
-    }
+  int config;
+  BQRegister *reg = m_regByAddress(0x0903);
+  check_fatal(reg, "%s: this is not a valid BQ configuration", __func__);
+  config = config = (1 << 2) & this->m_registers[i].m_value[0];
+  if (config) {
+    return 1e-2;
   }
-  check_fatal(0, "%s: this is not a valid BQ configuration", __func__);
+  else {
+    return 1e-3;
+  }
 }
 
 const static float C_CCGAIN_NUMERATOR = 7.4768;         /* 13.2.2.1 Calibration:Current:CC Gain */
@@ -1244,6 +1249,11 @@ void BQConfig::getCalibration(BQCalibration &calib)
   calib.ldGain = m_registers[18].getI16();
   calib.currentOffset = m_registers[25].getI16();
   calib.currentSenseGain = m_registers[20].getF32();
+}
+
+float BQConfig::getMaxChargeTemp(void) const 
+{
+  return 1.0f * m_regByAddress(0x929A)->getI8();
 }
 
 void BQConfig::getDefaultConfig(BQConfig *out)
