@@ -1237,6 +1237,8 @@ void BQConfig::applyCalibration(const BQCalibration &calib)
   m_registers[20].setF32(ccGainValue);
   /* 13.2.2.2 Calibration:Current:Capacity Gain */
   m_registers[21].setF32(C_CAPGAIN_MULTIPLIER * ccGainValue);
+  /* 13.7.4.1 Permanent Fail:TOS:Threshold */
+  m_registers[239].setI16(calib.tosfThresholdV * 1000 / BQ_N_CELLS);
 }
 
 void BQConfig::getCalibration(BQCalibration &calib)

@@ -133,6 +133,9 @@ struct BQCalibration {
     uint16_t ldGain;
     uint16_t currentOffset;
     float currentSenseGain;
+	
+	/* This is to allow for parametric configuration of the TOS threshold */
+	float tosfThresholdV;
 
 	/* Calculate sense resisor in Ohm based on given gain */
 	static float getSenseResistorFromGain(float gain);
