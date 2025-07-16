@@ -287,7 +287,6 @@ class bq76952 {
 private:
 	TwoWire *m_I2C;
 	int m_I2C_Address;
-	int m_alertPin;
 	bool m_loud;
 	bool m_inUpdateConfig;
 	byte m_RAMAccessBuffer[32];
@@ -326,7 +325,7 @@ public:
 	bq76952() = default;
 
 	/* Init */
-	int init(byte alertPin, TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
+	int init(TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
 	
 	/* Begin (initial config download and initialization) */
 	int begin();

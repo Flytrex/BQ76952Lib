@@ -532,10 +532,9 @@ int bq76952::m_configDownload(BQConfig *config)
 
 /////// API FUNCTIONS ///////
 
-int bq76952::init(byte alertPin, TwoWire *i2c, bool loud, byte address)
+int bq76952::init(TwoWire *i2c, bool loud, byte address)
 {
   checkbq(0 <= alertPin && alertPin <= 44, "invalid pin number %d", alertPin);
-  m_alertPin = alertPin;
   m_loud = loud;
   m_I2C_Address = address;
   pinMode(alertPin, INPUT);
