@@ -124,7 +124,7 @@ public:
 
 #define BQ76952_TOT_REGISTERS 272
 
-struct BQCalibration {
+struct BQconfigAdjustments {
 	/* This class contains only the values that are likely to be different in each unit
 		as opposed to values that are likely to be shared in a whole model run. */
 	uint16_t cellGain[BQ_N_CELLS];
@@ -136,6 +136,12 @@ struct BQCalibration {
 	
 	/* This is to allow for parametric configuration of the TOS threshold */
 	float tosfThresholdV;
+
+	/* This is to allow online configuration of cell type */
+	float COVThresholdV;
+
+	/* This is to allow different cell counts */
+	uint16_t activeCellsMask;
 
 	/* Calculate sense resisor in Ohm based on given gain */
 	static float getSenseResistorFromGain(float gain);
@@ -155,8 +161,8 @@ public:
 	int CRC32(void) const;
 	float getUserAScaling(void) const;
 	float getUserVScaling(void) const;
-	void applyCalibration(const BQCalibration &calib);
-	void getCalibration(BQCalibration &calib);
+	void applyAdjustments(const BQconfigAdjustments &adj);
+	void readAdjustmetns(BQconfigAdjustments &adj);
 	float getMaxChargeTemp(void) const;
 };
 

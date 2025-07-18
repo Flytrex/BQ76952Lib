@@ -534,10 +534,8 @@ int bq76952::m_configDownload(BQConfig *config)
 
 int bq76952::init(TwoWire *i2c, bool loud, byte address)
 {
-  checkbq(0 <= alertPin && alertPin <= 44, "invalid pin number %d", alertPin);
   m_loud = loud;
   m_I2C_Address = address;
-  pinMode(alertPin, INPUT);
   m_I2C = i2c;
   return 0;
 
@@ -1215,42 +1213,46 @@ float BQConfig::getUserVScaling(void) const
 const static float C_CCGAIN_NUMERATOR = 7.4768;         /* 13.2.2.1 Calibration:Current:CC Gain */
 const static float C_CAPGAIN_MULTIPLIER = 298261.6178;  /* 13.2.2.2 Calibration:Current:Capacity Gain */
 
-float BQCalibration::getSenseResistorFromGain(float gain)
+float BQconfigAdjustments::getSenseResistorFromGain(float gain)
 {
   return C_CCGAIN_NUMERATOR / gain;
 }
 
-void BQConfig::applyCalibration(const BQCalibration &calib)
+void BQConfig::applyAdjustments(const BQconfigAdjustments &adj)
 {
   /* first 16 registers are luckily exactly the cell gain */
   for (size_t i = 0; i < BQ_N_CELLS; ++i) {
-    m_registers[i].setI16(calib.cellGain[i]);
+    m_registers[i].setI16(adj.cellGain[i]);
   }
-  m_registers[16].setI16(calib.packGain);
-  m_registers[17].setI16(calib.tosGain);
-  m_registers[18].setI16(calib.ldGain);
-  m_registers[25].setI16(calib.currentOffset);
+  m_registers[16].setI16(adj.packGain);
+  m_registers[17].setI16(adj.tosGain);
+  m_registers[18].setI16(adj.ldGain);
+  m_registers[25].setI16(adj.currentOffset);
 
   /* 13.2.2.1 Calibration:Current:CC Gain */
-  float ccGainValue = ftx_util::clamp(1e-2f, calib.currentSenseGain, 10e2f);
+  float ccGainValue = ftx_util::clamp(1e-2f, adj.currentSenseGain, 10e2f);
   m_registers[20].setF32(ccGainValue);
   /* 13.2.2.2 Calibration:Current:Capacity Gain */
   m_registers[21].setF32(C_CAPGAIN_MULTIPLIER * ccGainValue);
+  /* 13.3.2.19 Settings:Configuration:Vcell Mode */
+  m_registers[94].setI16(adj.activeCellsMask);
+  /* 13.6.2.1 Protections:COV:Threshold */
+  m_registers[176].setI8(ceil(adj.COVThresholdV * (1000.0f / 50.6f)));
   /* 13.7.4.1 Permanent Fail:TOS:Threshold */
-  m_registers[239].setI16(calib.tosfThresholdV * 1000 / BQ_N_CELLS);
+  m_registers[239].setI16(adj.tosfThresholdV * 1000 / BQ_N_CELLS);
 }
 
-void BQConfig::getCalibration(BQCalibration &calib)
+void BQConfig::readAdjustmetns(BQconfigAdjustments &adj)
 {
   /* first 16 registers are luckily exactly the cell gains */
   for (size_t i = 0; i < BQ_N_CELLS; ++i) {
-    calib.cellGain[i] = m_registers[i].getI16();
+    adj.cellGain[i] = m_registers[i].getI16();
   }
-  calib.packGain = m_registers[16].getI16();
-  calib.tosGain = m_registers[17].getI16();
-  calib.ldGain = m_registers[18].getI16();
-  calib.currentOffset = m_registers[25].getI16();
-  calib.currentSenseGain = m_registers[20].getF32();
+  adj.packGain = m_registers[16].getI16();
+  adj.tosGain = m_registers[17].getI16();
+  adj.ldGain = m_registers[18].getI16();
+  adj.currentOffset = m_registers[25].getI16();
+  adj.currentSenseGain = m_registers[20].getF32();
 }
 
 float BQConfig::getMaxChargeTemp(void) const 
