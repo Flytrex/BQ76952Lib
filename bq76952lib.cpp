@@ -88,7 +88,6 @@ int bq76952::m_directCommandRead(byte command, size_t size, int *o_data)
 int bq76952::m_writeBulkAddress(int command, size_t size)
 {
   byte *puCmd = (byte *) &command;
-  int erc = 0;
   checkbq(0 <= size && size <= (CMD_DIR_XFER_CHKSUM - CMD_DIR_XFER_BUF_START), "%s: invalid size %lu", __func__, size);
   m_I2C->beginTransmission(m_I2C_Address);
   m_I2C->write(CMD_DIR_SUBCMD_LOW);
@@ -418,7 +417,6 @@ int bq76952::configUpload(const BQConfig *config)
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
     uint16_t address = config->m_registers[i].getAddress();
     int type = config->m_registers[i].getType();
-    int erc = 0;
     if (m_loud) {
       message("%s: [%3d/" XSTR(BQ76952_TOT_REGISTERS) "] uploading reg 0x%04X (%s) type %s",
               __func__, i + 1, address, config->m_registers[i].getDescription(), reg2str(type));
@@ -482,7 +480,6 @@ int bq76952::m_configDownload(BQConfig *config)
   for (size_t i = 0; i < BQ76952_TOT_REGISTERS; ++i) {
     uint16_t address = config->m_registers[i].getAddress();
     int type = config->m_registers[i].getType();
-    int erc = 0;
     if (m_loud) {
       message("%s: [%3d/" XSTR(BQ76952_TOT_REGISTERS) "] downloading reg 0x%04X (%s) type %s",
               __func__, i + 1, address, config->m_registers[i].getDescription(), reg2str(type));
@@ -538,9 +535,6 @@ int bq76952::init(TwoWire *i2c, bool loud, byte address)
   m_I2C_Address = address;
   m_I2C = i2c;
   return 0;
-
-  error:
-  return -1;
 }
 
 int bq76952::begin() 
