@@ -1239,7 +1239,7 @@ void BQConfig::applyAdjustments(const BQconfigAdjustments &adj)
   /* 13.6.12.1 Protections:OTC:Threshold */
   m_registers[204].setI8(floor(adj.chargingLimitHighTempC));
   /* 13.6.17.1 Protections:UTD:Threshold */
-  m_registers[219].setI32(ceil(adj.emergencyLowTempC));
+  m_registers[219].setI8(ceil(adj.emergencyLowTempC));
   /* 13.6.16.1 Protections:UTC:Threshold */
   m_registers[216].setI8(ceil(adj.chargingLimitLowTempC));
 }
