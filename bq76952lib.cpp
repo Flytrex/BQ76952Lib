@@ -1234,6 +1234,14 @@ void BQConfig::applyAdjustments(const BQconfigAdjustments &adj)
   m_registers[176].setI8(ceil(adj.COVThresholdV * (1000.0f / 50.6f)));
   /* 13.7.4.1 Permanent Fail:TOS:Threshold */
   m_registers[239].setI16(adj.tosfThresholdV * 1000 / BQ_N_CELLS);
+  /* 13.6.13.1 Protections:OTD:Threshold */
+  m_registers[207].setI8(floor(adj.emergencyHighTempC));
+  /* 13.6.12.1 Protections:OTC:Threshold */
+  m_registers[204].setI8(floor(adj.chargingLimitHighTempC));
+  /* 13.6.17.1 Protections:UTD:Threshold */
+  m_registers[219].setI32(ceil(adj.emergencyLowTempC));
+  /* 13.6.16.1 Protections:UTC:Threshold */
+  m_registers[216].setI8(ceil(adj.chargingLimitLowTempC));
 }
 
 void BQConfig::readAdjustmetns(BQconfigAdjustments &adj)

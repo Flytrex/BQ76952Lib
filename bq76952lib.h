@@ -143,6 +143,12 @@ struct BQconfigAdjustments {
 	/* This is to allow different cell counts */
 	uint16_t activeCellsMask;
 
+	/* This is to allow for different limits for different cells */
+	float emergencyHighTempC;
+	float chargingLimitHighTempC;
+	float emergencyLowTempC;
+	float chargingLimitLowTempC;
+
 	/* Calculate sense resisor in Ohm based on given gain */
 	static float getSenseResistorFromGain(float gain);
 };
