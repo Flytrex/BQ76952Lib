@@ -285,7 +285,7 @@ extern BQSafety const BQ_FAULT_ITERABLE[BQ_N_ALERTS];
 
 class BQSafetyState {
 	friend class bq76952;
-	byte m_registerBlock[14];
+	byte m_registerBlock[14] = {0};
 	bool m_readSafetyVal(int reg, int bit) const;
 public:
 	bool getSafetyFlag(BQSafety flag) const;
