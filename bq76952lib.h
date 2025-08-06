@@ -1,7 +1,7 @@
 /*
 * Description :   Header file of BQ76952 BMS IC (by Texas Instruments) for Arduino platform.
 * Author      :   Pranjal Joshi, Grisha Revzin @ Flytrex
-* Date        :   17/10/2020 
+* Date        :   17/10/2020
 * License     :   MIT
 * This code is published as open source software. Feel free to share/modify.
 */
@@ -30,7 +30,7 @@ enum bq76952_thermistor {
 
 struct BQTemps_C {
 	/* temperature at the given BQ76952 pin
-	   (check your config to see which ones're configured 
+	   (check your config to see which ones're configured
 	   as thermistors and what do they actually measure)*/
 	float 	int_,
 			cfetoff,
@@ -64,7 +64,7 @@ enum bq76952_voltages {
 	BQ_VOLTAGE_CELL14 = 0x2E,
 	BQ_VOLTAGE_CELL15 = 0x30,
 	BQ_VOLTAGE_CELL16 = 0x32,
-	BQ_VOLTAGE_STACK = 0x34,	
+	BQ_VOLTAGE_STACK = 0x34,
 	BQ_VOLTAGE_PACK = 0x36,
 	BQ_VOLTAGE_LD = 0x38
 };
@@ -84,10 +84,10 @@ struct BQRawCalibCounts {
 };
 
 struct BQPrimaryState {
-	bool charging;
-	bool precharging;
-	bool discharging;
-	bool predischarging;
+	bool CFETclosed;
+	bool PCFETclosed;
+	bool DFETclosed;
+	bool PDFETclosed;
 	bool alertPin;
 };
 
@@ -133,7 +133,7 @@ struct BQconfigAdjustments {
     uint16_t ldGain;
     uint16_t currentOffset;
     float currentSenseGain;
-	
+
 	/* This is to allow for parametric configuration of the TOS threshold */
 	float tosfThresholdV;
 
@@ -208,7 +208,7 @@ enum BQSafety {
 	BQSafety_F_UTINT		= BQ_ALERT_ENC(0x05, 2),
 	BQSafety_F_UTD		= BQ_ALERT_ENC(0x05, 1),
 	BQSafety_F_UTC		= BQ_ALERT_ENC(0x05, 0),
-	
+
 	/* Safety Alert C */
 	BQSafety_A_OCD3		= BQ_ALERT_ENC(0x06, 7),
 	BQSafety_A_SCDL		= BQ_ALERT_ENC(0x06, 6),
@@ -217,7 +217,7 @@ enum BQSafety {
 	BQSafety_A_PTOS		= BQ_ALERT_ENC(0x06, 3),
 
 	/* Safety Status C */
-	BQSafety_F_OCD3	= BQ_ALERT_ENC(0x07, 7),			
+	BQSafety_F_OCD3	= BQ_ALERT_ENC(0x07, 7),
 	BQSafety_F_SCDL	= BQ_ALERT_ENC(0x07, 6),
 	BQSafety_F_OCDL	= BQ_ALERT_ENC(0x07, 5),
 	BQSafety_F_COVL	= BQ_ALERT_ENC(0x07, 4),
@@ -231,7 +231,7 @@ enum BQSafety {
 	BQSafety_A_SOCC		= BQ_ALERT_ENC(0x0A, 2),
 	BQSafety_A_SOV		= BQ_ALERT_ENC(0x0A, 1),
 	BQSafety_A_SUV		= BQ_ALERT_ENC(0x0A, 0),
-	
+
 	/* PF Status A */
 	BQSafety_F_CUDEP	= BQ_ALERT_ENC(0x0B, 7),
 	BQSafety_F_SOTF	= BQ_ALERT_ENC(0x0B, 6),
@@ -338,23 +338,23 @@ public:
 
 	/* Init */
 	int init(TwoWire *I2C, bool loud = false, byte address = BQ_I2C_DEFAULT_ADDRESS);
-	
+
 	/* Begin (initial config download and initialization) */
 	int begin();
 
 	/* Upload config.
 	 * Returns:
-	 *  0 = success 
-	 * -1 = general failure 
+	 *  0 = success
+	 * -1 = general failure
 	 * -2 = readback CRC mismatch */
 	int configUpload(const BQConfig *config);
-	
+
 	/* Last config's checksum */
 	int configChecksum(void) const;
 
 	/* Send a reset command (this will reset the configuration to OTP) */
 	int reset(void);
-	
+
 	/* Get primary current: 3 ms update rate by default */
 	int getCC2Current(float *out_A);
 
@@ -366,13 +366,13 @@ public:
 
 	/* Get averaging window (dependent on configuration) in seconds */
 	float getCC3Period(void);
-	
+
 	/* Get voltage on channel */
 	int getVoltage(bq76952_voltages channel, float *o_V);
-	
+
 	/* Get all voltages -- faster than reading one by one */
-	int getVoltages(BQVoltages_V *out);			
-	
+	int getVoltages(BQVoltages_V *out);
+
 	/* Get thermistor value */
 	int getThermistorTemp(bq76952_thermistor thermistor, float *o_tempC);
 
