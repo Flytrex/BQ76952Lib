@@ -25,7 +25,9 @@
 #define CMD_DIR_XFER_CHKSUM           ((byte) 0x60)
 #define MAX_TRANSFER_SIZE (CMD_DIR_XFER_CHKSUM - CMD_DIR_XFER_BUF_START)
 
+#ifdef DEBUG_PRINTING
 static const char *reg2str(int reg);
+#endif
 
 typedef enum {
 	REG_TYPE_BYTE,
@@ -178,6 +180,7 @@ int bq76952::m_bulkRead(int address, int expectedSize, byte *o_data)
   checkbq(ourChecksum == responseChecksum,
     "%s(scmd=0x%04X, expectedSize=%u): checksum mismatch. Ours = %d theirs = %d", __func__, address, expectedSize, ourChecksum, responseChecksum);
 
+#ifdef DEBUG_PRINTING
   if (m_loud) {
     int *o_data_int = (int *) o_data;
     message("%s(scmd=0x%04X, expectedSize=%d) -> [%08X %08X %08X %08X %08X %08X %08X %08X]",
@@ -185,6 +188,8 @@ int bq76952::m_bulkRead(int address, int expectedSize, byte *o_data)
                       o_data_int[0], o_data_int[1], o_data_int[2], o_data_int[3],
                       o_data_int[4], o_data_int[5], o_data_int[6], o_data_int[7]);
   }
+#endif
+
   return 0;
 
   error:
@@ -294,12 +299,14 @@ int bq76952::m_bulkWrite(int address, int size, byte *data, bool skipTxSetup)
   m_I2C->write(CMD_DIR_XFER_LEN);
   m_I2C->write(size + 4);
   checkbq(!(erc = m_I2C->endTransmission(true)), "%s(cmd=0x%04X): endTransmission unexcepted result %d", __func__, address, erc);
+#ifdef DEBUG_PRINTING
   if (m_loud) {
     int *data_int = (int *) data;
     message("%s(scmd=0x%04X, size=%d, data = [%08X %08X %08X %08X %08X %08X %08X %08X]) -> [OK]",
             __func__, address,  size, data_int[0], data_int[1], data_int[2], data_int[3],
                                         data_int[4], data_int[5], data_int[6], data_int[7]);
   }
+#endif
   return 0;
 
   error:
@@ -1127,6 +1134,7 @@ size_t BQRegister::getSize(void) const
   }
 }
 
+#ifdef DEBUG_PRINTING
 static const char *reg2str(int reg)
 {
   switch (reg) {
@@ -1142,6 +1150,7 @@ static const char *reg2str(int reg)
     return "INVALID";
   }
 }
+#endif
 
 int BQRegister::getType(void) const
 {
