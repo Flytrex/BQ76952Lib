@@ -137,6 +137,9 @@ struct BQconfigAdjustments {
 	/* This is to allow for parametric configuration of the TOS threshold */
 	float tosfThresholdV;
 
+	/* This is to configure the balancing threshold */
+	float minAutoBalancingVoltageV;
+
 	/* This is to allow online configuration of cell type */
 	float COVThresholdV;
 

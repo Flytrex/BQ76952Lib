@@ -1251,6 +1251,12 @@ void BQConfig::applyAdjustments(const BQconfigAdjustments &adj)
   m_registers[219].setI8(ceil(adj.emergencyLowTempC));
   /* 13.6.16.1 Protections:UTC:Threshold */
   m_registers[216].setI8(ceil(adj.chargingLimitLowTempC));
+
+  /* 13.3.11.10 Settings:Cell Balancing Config:Cell Balance Min Cell V (Relax) */
+  m_registers[151].setI16(ceil(adj.minAutoBalancingVoltageV * 1000.0f));
+
+  /* 13.3.11.7 Settings:Cell Balancing Config:Cell Balance Min Cell V (Charge) */
+  m_registers[154].setI16(ceil(adj.minAutoBalancingVoltageV * 1000.0f));
 }
 
 void BQConfig::readAdjustmetns(BQconfigAdjustments &adj)
