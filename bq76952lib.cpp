@@ -1014,6 +1014,7 @@ const char *BQSafetyState::safetyFlagToString(BQSafety flag)
 
 int BQSafetyState::snprintLockouts(char *buffer, size_t bufSize)
 {
+    /* prints active alert / fault names in order */
     char *pLast = buffer;
     size_t nActive = 0;
     for (size_t i = 0; i < BQ_N_ALERTS; ++i) {
