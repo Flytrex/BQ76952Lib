@@ -1222,6 +1222,22 @@ float BQconfigAdjustments::getSenseResistorFromGain(float gain)
   return C_CCGAIN_NUMERATOR / gain;
 }
 
+static int numberOfUsedCellsInMask(uint16_t mask)
+{
+  int count = 0;
+  for (int i = 0; i < BQ_N_CELLS; ++i) {
+    if (mask & (1 << i)) {
+      count++;
+    }
+  }
+
+  /* At least two cells are required. */
+  if (count < 2)
+    return 2;
+
+  return count;
+}
+
 void BQConfig::applyAdjustments(const BQconfigAdjustments &adj)
 {
   /* first 16 registers are luckily exactly the cell gain */
@@ -1243,7 +1259,7 @@ void BQConfig::applyAdjustments(const BQconfigAdjustments &adj)
   /* 13.6.2.1 Protections:COV:Threshold */
   m_registers[176].setI8(ceil(adj.COVThresholdV * (1000.0f / 50.6f)));
   /* 13.7.4.1 Permanent Fail:TOS:Threshold */
-  m_registers[239].setI16(adj.tosfThresholdV * 1000 / BQ_N_CELLS);
+  m_registers[239].setI16(adj.tosfThresholdV * 1000 / numberOfUsedCellsInMask(adj.activeCellsMask));
   /* 13.6.13.1 Protections:OTD:Threshold */
   m_registers[207].setI8(floor(adj.emergencyHighTempC));
   /* 13.6.12.1 Protections:OTC:Threshold */
